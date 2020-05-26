@@ -1,430 +1,826 @@
-! Author: Amir Shahmoradi, last updated on Sunday 10:51 PM, Dec 22, 2013, IFS/ICMB, UT Austin
-! Correlation matrix is now sampled from its Fisher transformation.
-
 module BatseSgrbWorldModel_mod
 
-#ifdef H06
-    use StarFormation_mod, only: getLogSFR => getLogSFRH06
+#if defined H06
+    use StarFormation_mod, only: getLogRate => getLogRateH06
 #elif defined L08
-    use StarFormation_mod, only: getLogSFR => getLogSFRL08
+    use StarFormation_mod, only: getLogRate => getLogRateL08
 #elif defined B10
-    use StarFormation_mod, only: getLogSFR => getLogSFRB10
+    use StarFormation_mod, only: getLogRate => getLogRateB10
 #elif defined M14
-    use StarFormation_mod, only: getLogSFR => getLogSFRM14
+    use StarFormation_mod, only: getLogRate => getLogRateM14
+#elif defined M17
+    use StarFormation_mod, only: getLogRate => getLogRateM17
+#elif defined F18
+    use StarFormation_mod, only: getLogRate => getLogRateF18
 #else
 #error "Unknown SFR model in BatseSgrbWorldModel_mod.f90"
 #endif
-    use Constants_mod, only: IK, RK, PI, LN10
+    use Constants_mod, only: IK, RK, SPR, PI, NEGINF_RK
     use Batse_mod, only: GRB
 
     implicit none
 
+#if defined ERR_ESTIMATION_ENABLED
+    real(RK)                :: zone_relerr, zgrb_relerr, durz_relerr, liso_relerr, epkz_relerr
+    real(RK)                :: zone_neval, zgrb_neval, durz_neval, liso_neval, epkz_neval
+    integer(IK)             :: zgrb_count, durz_count, liso_count, epkz_count
+#endif
+
     character(*), parameter :: MODULE_NAME = "@BatseSgrbWorldModel_mod"
 
-    ! ******************************************************************************************************************************
+    ! *********************************************
     ! world model parameters
-    ! ******************************************************************************************************************************
+    ! *********************************************
 
-    integer(IK), parameter :: NVAR = 4     ! number of GRB attributes used in the world model
-    integer(IK), parameter :: NPAR = 16    ! number of world model's parameters
+    integer(IK) , parameter :: ERFK = SPR   ! the real kind of the input value to erf()
+    integer(IK) , parameter :: NVAR = 4_IK  ! number of GRB attributes used in the world model
+    integer(IK) , parameter :: NPAR = 16_IK ! number of world model's parameters
 
     ! the normalization factor of the multivariate log-normal distribution
-    real(RK), parameter :: SQRT_TWOPI_POW_NVAR = sqrt((2._RK*PI)**NVAR)
+
+    real(RK)    , parameter :: SQRT_TWOPI_POW_NVAR = sqrt((2._RK*PI)**NVAR)
 
     ! the exponent of zone in time-dilation translation of T90 to T90z
-#ifdef KFAC_ONETHIRD_ENABLED
-    real(RK), parameter :: TIME_DILATION_EXPO = 0.666666666666667_RK
+
+#if defined kfacOneThird
+    real(RK)    , parameter :: TIME_DILATION_EXPO = 0.666666666666667_RK
 #endif
 
     ! the half-width of efficiency curve from 0 to 1, in units of threshold standard deviation
-    real(RK), parameter :: THRESH_HALF_WIDTH = 4._RK
+    real(RK)    , parameter :: THRESH_SIGNIFICANCE = 4._RK
 
-    real(RK), parameter :: INTEGRATION_LIMIT_LOGEPK_MIN = -6.712165960423344_RK
-    real(RK), parameter :: INTEGRATION_LIMIT_LOGEPK_MAX = 12.455573549219071_RK
+    ! The Epk below and boave which the detector threshold becomes independent of the Epk of the events.
+    real(RK)    , parameter :: INTEGRATION_LIMIT_LOGEPK_MIN = -6.712165960423344_RK
+    real(RK)    , parameter :: INTEGRATION_LIMIT_LOGEPK_MAX = 12.455573549219071_RK
 
-    ! observer-frame durations above and below which the average threshold at the given duration becomes practically independent of the duration.
-    real(RK), parameter :: INTEGRATION_LIMIT_LOGDUR_MIN = LN10 * -3.2_RK
-    real(RK), parameter :: INTEGRATION_LIMIT_LOGDUR_MAX = LN10 * +2.5_RK
+    ! The T90 duration below and boave which the detector threshold becomes independent of the durations of the events.
+    real(RK)    , parameter :: INTEGRATION_LIMIT_LOGDUR_MIN = -3.2_RK
+    real(RK)    , parameter :: INTEGRATION_LIMIT_LOGDUR_MAX = +2.5_RK
+
+    ! *********************************************
+    ! variables to be read from the input file
+    ! *********************************************
+
+    !type :: IntegrationLimit_type
+    !    real(RK) :: zonemin = 1.1_RK, zonemax = 1.01e2_RK
+    !    real(RK) :: logepkmin = -6.712165960423344_RK, logepkmax = 12.455573549219071_RK
+    !end type IntegrationLimit_type
+    !type(IntegrationLimit_type) :: IntegrationLimit
+
+    ! integration specifications
+
+    real(RK)    :: zoneMin = 1.09_RK    ! 1.1e0_RK
+    real(RK)    :: zoneMax = 7.501_RK   ! 2.1e1_RK
+    real(RK)    :: zoneTol = 1.e-4_RK
+    real(RK)    :: durzTol = 5.e-5_RK
+    real(RK)    :: lisoTol = 1.e-5_RK
+    real(RK)    :: epkzTol = 5.e-6_RK
+    integer(IK) :: zoneRef = 4_IK
+    integer(IK) :: durzRef = 4_RK
+    integer(IK) :: lisoRef = 5_RK
+    integer(IK) :: epkzRef = 5_RK
+
+    ! *********************************************
+    ! other shared variables used in this module
+    ! *********************************************
+
+    type :: Attribute_type
+        real(RK) :: logLiso, logEpkz, logEiso, logDurz
+    end type Attribute_type
+    type(Attribute_type) :: mv_Avg, mv_Std
+
+    type :: Threshold_type
+        real(RK) :: avg, invStdSqrt2, logPbolMin, logPbolMax
+    end type Threshold_type
+    type(Threshold_type) :: mv_Thresh
+
+    type :: ConditionalVariable_type
+        real(RK):: tilt, bias, avg, std, invStdSqrt2, invStdSqrt2pi
+    end type ConditionalVariable_type
+    type(ConditionalVariable_type) :: mv_LogLisoGivenLogDurz
+    type(ConditionalVariable_type) :: mv_LogEpkzGivenLogDurz
+    type(ConditionalVariable_type) :: mv_LogEpkzGivenLogDurzLogLiso
+
+    ! The covariance matrix of the world model
+
+    real(RK)        :: mv_CholeskyLowerLogNormModel(NVAR,NVAR), mv_DiagonalLogNormModel(NVAR)
+    real(RK)        :: mv_InvCovMatLogNormModel(NVAR,NVAR)
+
+    real(RK)        :: mv_logLisoLogPbolDiff                ! this is log10(4*pi*dl^2) where dl is luminosity distance in units of mpc
+    real(RK)        :: mv_effectivePeakPhotonFluxCorrection ! P64ms peak photon flux correction to get the effective peak flux of Shahmoradi and Nemiroff 2015
+    real(RK)        :: mv_logZone, mv_logZoneKfacCorrected, mv_logEpkzMin, mv_logEpkzMax, mv_logPbol
+    real(RK)        :: mv_logLisoInvStdSqrt2, mv_logLisoInvStdSqrt2pi
+    real(RK)        :: mv_logDurzInvStdSqrt2, mv_logDurzInvStdSqrt2pi
+    real(RK)        :: mv_logLisoAtFullEfficiency
+    real(RK)        :: mv_thresh_erfc_avg_at_z
+    integer(IK)     :: mv_igrb                      ! index for referencing GRBs in the computation of logPostProb
+    integer(IK)     :: mv_counter = 0_IK            ! counter counting how many times the function is called
+    integer(IK)     :: mv_ierr = 0_IK               ! flag indicating whether a lack-of-convergence error has occurred in integrations.
+
+!***********************************************************************************************************************************
+!***********************************************************************************************************************************
 
 contains
 
 !***********************************************************************************************************************************
 !***********************************************************************************************************************************
 
-    function getLogPostProb(PARAM)    ! Stands for Gaussian Mixture Log(Likelihood)
-    use MODELparameters
-    use Zparameters, only: zmin,zmax    !,nz
-    use constants, only: sqrt2,sqrt2Pi    ! ,sqrtPiO2
-    use GRBworld, only: npar
-    use OBSGRBDATA
-    use detection
-    implicit none
-    INTEGER :: i,j,posdef
-    real(RK) :: getLogPostProb,determinant
-    real(RK) :: lisosigma,epkzsigma,normfac,t90zsigma,dumvar
-    real(RK), DIMENSION(npar) :: PARAM
-    !real(RK), EXTERNAL :: probatz,modelintz
-    !real(RK) :: z,modelintz,probatz        ! Here it is assumed that z=0, therefore, modelintz=modelint
-    real(RK) :: probDetectionGRB 
-    
-    real(RK) :: time_integration_end,time_integration_start 
-    
-    ! LGRB model parameters:
-        loglisomean=PARAM(1)
-        logepkzmean=PARAM(2)
-        logeisomean=PARAM(3)
-        logt90zmean=PARAM(4)
-        lisosigma=10.d0**PARAM(5)
-        epkzsigma=10.d0**PARAM(6)
-        ! The conditional meand & stdev of Epkz distribution on the conditional_distribution_of_Liso_on_duration will be calculated in function ProbatLisoGivenDurz.f90
-        t90zsigma=10.d0**PARAM(8)
-        ! The correlation Coefficients array (apply inverse Fisher transformation):
-        do i=9,14
-            dumvar=2.d0*PARAM(i)
-            RHO(i)=(dexp(dumvar)-1.d0)/(dexp(dumvar)+1.d0)
-        end do
-    ! Other parameters needed for the purpose of model integrations:
-        meanthresh=PARAM(15)
-        stdevthresh=10.d0**PARAM(16)
-        eff_min_pph=meanthresh-signif*stdevthresh    ! The EFFective Log(P1024ph) limit below which no trigger happens.
-                                                    ! It is equivalent to minimum Log(P1024ph) at very long durations.
-        eff_max_pph=meanthresh+signif*stdevthresh    ! The EFFective Log(P1024ph) limit above which trigger efficiency is 100%.
-                                                    ! It is equivalent to maximum Log(P1024ph) at very long durations.
-        eff_min_lpb=eff_min_pph-logphminmaxdiff-logp1024min    ! Effective LogPbol limit below which no trigger happens, for any Log(Epk).
-                                                            ! It is equivalent to minimum Log(Pbol) at very long durations.
-        !eff_max_lpb=eff_max_pph+logphminmaxdiff-logp1024min    ! Effective LogPbol limit above which trigger efficiency is 100%, for any Log(Epk).
-                                                            ! It is equivalent to maximum Log(Pbol) at very long durations.
-        glb_max_lpb=eff_max_pph+lpb_correction
+    ! Amir Shahmoradi, Monday 4:43 PM, May 25, 2020, SEIR, UTA, Arlington, TX.
+    function getLogPostProb(npar,Param) result(logPostProb)
+        use Constants_mod, only: IK, RK
+        implicit none
+        integer(IK) , intent(in)    :: npar
+        real(RK)    , intent(in)    :: Param(npar)
+        real(RK)                    :: logPostProb
+        real(RK)                    :: logNormCoefLogPostProb(2)
+        logical                     :: logPostProbNotNeeded
+        logPostProbNotNeeded = .false.
+        logNormCoefLogPostProb = getLogNormCoefLogPostProb(npar,Param,logPostProbNotNeeded)
+        logPostProb = logNormCoefLogPostProb(2)
+    end function getLogPostProb
+
+    ! Amir Shahmoradi, Sunday 12:12 AM, Dec 17, 2018, SEIR, UTA, Arlington, TX.
+    function getLogNormCoefLogPostProb(npar,Param,logPostProbNotNeeded) result(logNormCoefLogPostProb)
+
+        use, intrinsic :: iso_fortran_env, only: output_unit
+        use Constants_mod, only: IK, RK, SQRT2, SQRT2PI
+#if defined quadpackDPR
+        use QuadPackDPR_mod, only: dqag
+#elif defined quadpackSPR
+        use QuadPackSPR_mod, only: qag
+#else
+       !use Integration_mod, only: doQuadRombOpen, ErrorMessage, midexp
+        use Integration_mod, only: doQuadRombClosed, ErrorMessage
+#endif
+        use Matrix_mod, only: getCholeskyFactor, getInvMatFromCholFac
+        use Batse_mod, only: MIN_LOGPH53_4_LOGPBOLZERO, MAX_LOGPH53_4_LOGPBOLZERO, THRESH_LOGPBOL64_CORRECTION
+        implicit none
+        integer(IK)                 :: i, j, ierr
+        integer(IK) , intent(in)    :: npar
+        real(RK)    , intent(in)    :: Param(npar)
+        logical     , intent(in)    :: logPostProbNotNeeded
+        real(RK)                    :: logNormCoefLogPostProb(2)
+        real(RK)                    :: normFac, probGRB
+        real(RK)                    :: rhoLisoEpkz
+        real(RK)                    :: rhoLisoEiso
+        real(RK)                    :: rhoLisoDurz
+        real(RK)                    :: rhoEpkzEiso
+        real(RK)                    :: rhoEpkzDurz
+        real(RK)                    :: rhoEisoDurz
+        real(RK)                    :: rhoEpkzLisoGivenDurz
+        real(RK)                    :: modelint ! integral of the model over the redshift range given by variable zone.
+        !real(RK)                   :: lumsigma,epkzsigma,conepkzsigma,normFac
+        !real(RK), external         :: midexp,getProbGRB
+
+        ! integration variables
+
+        real(RK)                :: relerr
+        integer(IK)             :: neval
+
+#if defined quadpackDPR
+        integer(IK), parameter  :: limit = 1000_IK
+        integer(IK), parameter  :: lenw = 4_IK * limit
+        integer(IK)             :: last
+        integer(IK)             :: iwork(limit)
+        real(RK)                :: work(lenw)
+#endif
+
+        mv_ierr = 0_IK
+        mv_counter = mv_counter + 1_IK
+
+        ! mean and standard deviations
+
+        mv_Avg%logLiso  = Param(1)
+        mv_Avg%logEpkz  = Param(2)
+        mv_Avg%logEiso  = Param(3)
+        mv_Avg%logDurz  = Param(4)
+        mv_Std%logLiso  = exp(Param(5))
+        mv_Std%logEpkz  = exp(Param(6))
+        mv_Std%logEiso  = exp(Param(7))
+        mv_Std%logDurz  = exp(Param(8))
+
+        ! do inverse Fisher-transform to get the correlation coefficients
+
+        rhoLisoEpkz = tanh(Param(9))
+        rhoLisoEiso = tanh(Param(10))
+        rhoLisoDurz = tanh(Param(11))
+        rhoEpkzEiso = tanh(Param(12))
+        rhoEpkzDurz = tanh(Param(13))
+        rhoEisoDurz = tanh(Param(14))
+
+        ! covariance matrix of the LogNormal GRB world model
+
+        mv_CholeskyLowerLogNormModel(1,1) = mv_Std%logLiso * mv_Std%logLiso
+        mv_CholeskyLowerLogNormModel(2,2) = mv_Std%logEpkz * mv_Std%logEpkz
+        mv_CholeskyLowerLogNormModel(3,3) = mv_Std%logEiso * mv_Std%logEiso
+        mv_CholeskyLowerLogNormModel(4,4) = mv_Std%logDurz * mv_Std%logDurz
+        mv_CholeskyLowerLogNormModel(1,2) = mv_Std%logLiso * mv_Std%logEpkz * rhoLisoEpkz
+        mv_CholeskyLowerLogNormModel(1,3) = mv_Std%logLiso * mv_Std%logEiso * rhoLisoEiso
+        mv_CholeskyLowerLogNormModel(1,4) = mv_Std%logLiso * mv_Std%logDurz * rhoLisoDurz
+        mv_CholeskyLowerLogNormModel(2,3) = mv_Std%logEpkz * mv_Std%logEiso * rhoEpkzEiso
+        mv_CholeskyLowerLogNormModel(2,4) = mv_Std%logEpkz * mv_Std%logDurz * rhoEpkzDurz
+        mv_CholeskyLowerLogNormModel(3,4) = mv_Std%logEiso * mv_Std%logDurz * rhoEisoDurz
+
+        ! BATSE detection threshold
+
+        mv_Thresh%avg           = Param(15)
+        mv_Thresh%invStdSqrt2   = exp(Param(16))    ! momentarily is the threshold's standard deviation for the needs below.
+
+        ! logPbol below which no trigger happens, and above which trigger efficiency is 100%.
+
+        mv_Thresh%logPbolMin    = mv_Thresh%avg - THRESH_SIGNIFICANCE*mv_Thresh%invStdSqrt2 - MAX_LOGPH53_4_LOGPBOLZERO   ! equivalent to eff_min_lpb
+        mv_Thresh%logPbolMax    = mv_Thresh%avg + THRESH_SIGNIFICANCE*mv_Thresh%invStdSqrt2 + THRESH_LOGPBOL64_CORRECTION ! equivalent to glb_max_lpb
+        mv_Thresh%invStdSqrt2   = 1._RK / (mv_Thresh%invStdSqrt2*SQRT2)
+
         ! The parameter rhoLE_given_Durz is the partial correlation of Liso & Epkz conditional on rest-frame duration:
-        ! It is used in the integration of the model where the joint distribution of Lis-Epkz given rest-frame duration
-        ! has to be integrated. The relation can be found at http://en.wikipedia.org/wiki/Partial_correlation
-        ! LGRBs:
-            rhoLE_given_Durz=(RHO(9)-RHO(11)*RHO(13))/&
-            dsqrt((1.d0-RHO(11)**2)*(1.d0-RHO(13)**2))
-        ! SGRBs:
-            ! ATT: Change to RHO required: rhoLE_given_Durz(2)=(PARAM(24)-PARAM(26)*PARAM(28))/&
-            !dsqrt((1.d0-PARAM(26)**2)*(1.d0-PARAM(28)**2))
-        conlisosigmaD=dsqrt(1.d0-RHO(11)**2)*lisosigma    ! conditional stdev of LGRB Liso distribution on rest-frame Duration variable. needed for model integration
-        !conlisosigmaD(2)=dsqrt(1.d0-PARAM(26)**2)*lisosigma(2)    ! conditional stdev of LGRB Liso distribution on rest-frame Duration variable. needed for model integration
-        ! The two parameters below are needed for the calculation of bELD parameters:
-            conepkzsigmaD=dsqrt(1.d0-RHO(13)**2)*epkzsigma    ! conditional stdev of LGRB Epkz distribution on rest-frame Duration variable.
-            !conepkzsigmaD(2)=dsqrt(1.d0-PARAM(28)**2)*epkzsigma(2)    ! conditional stdev of LGRB Epkz distribution on rest-frame Duration variable.
-        ! The two parameters below is the conditional stdev of Epkz distribution on the conditional dist. of Liso distribution on Durationz.
-            conepkzsigmaLD=dsqrt(1.d0-rhoLE_given_Durz**2)*conepkzsigmaD
-            !conepkzsigmaLD(2)=dsqrt(1.d0-rhoLE_given_Durz(2)**2)*conepkzsigmaD(2)
-        ! The means of the conditional distributions of Liso given durz will be calculated in function probatdurz.f90
-        bLD=RHO(11)*lisosigma/t90zsigma    ! term used in the coditional distribution of Liso given durationZ.
-        !bLD(2)=PARAM(26)*lisosigma(2)/t90zsigma(2)    ! term used in the coditional distribution of Liso given durationZ.
-        aLD=loglisomean-logt90zmean*bLD    ! term used in the coditional distribution of Liso given durationz.
-        !aLD(2)=loglisomean(2)-logt90zmean(2)*bLD(2)    ! term used in the coditional distribution of Liso given durationz.
-        bED=RHO(13)*epkzsigma/t90zsigma    ! term used in the coditional distribution of Epkz given durationZ.
-        !bED(2)=PARAM(28)*epkzsigma(2)/t90zsigma(2)    ! term used in the coditional distribution of Epkz given durationZ.
-        aED=logepkzmean-logt90zmean*bED    ! term used in the coditional distribution of Epkz given durationz.
-        !aED(2)=logepkzmean(2)-logt90zmean(2)*bED(2)    ! term used in the coditional distribution of Epkz given durationz.
-        bELD=rhoLE_given_Durz*conepkzsigmaD/conlisosigmaD    ! term used in the coditional distribution of Epkz given Luminosity.
-        !bELD(2)=rhoLE_given_Durz(2)*conepkzsigmaD(2)/conlisosigmaD(2)    ! term used in the coditional distribution of Epkz given Luminosity.
-        ! aELD parameters will be calculated in Lisointergation.f90 since it requires the conditional mean of Liso distribution on durationz.
-        sqrt2lisosigma=sqrt2*lisosigma                ! defined for code efficiency, used in model integration.
-        sqrt2t90zsigma=sqrt2*t90zsigma                ! defined for code efficiency, used in model integration.
-        sqrt2Pit90zsigma=sqrt2Pi*t90zsigma                ! defined for code efficiency, used in model integration.
-        sqrt2conlisosigmaD=sqrt2*conlisosigmaD        ! This is the square root of the scale factor in the exponent of the Gaussian dist. function for LGRBs.
-        sqrt2conepkzsigmaLD=sqrt2*conepkzsigmaLD        ! This is the square root of the scale factor in the exponent of the Gaussian dist. function for LGRBs.
-        sqrt2PiconlisosigmaD=sqrt2Pi*conlisosigmaD    ! This is the normalization constant of the univariate Gaussian function for LGRBs.
-        sqrt2PiconepkzsigmaLD=sqrt2Pi*conepkzsigmaLD    ! This is the normalization constant of the univariate Gaussian function for LGRBs.
-        sqrt2stdevthresh=sqrt2*stdevthresh
-    ! SGRBs: Construct the covariance matrix of the SGRBs Gaussian model:
-        do i=1,nvar
-            ! expression below corresponds to lisosigma,epkzsigma,eisosigma for LGRB model respectively.
-                MVNCOV(i,i)=10.d0**PARAM(i+4)
-        end do
-        ! Expressions below correspond to corr(Liso,Epkz) = correlation of Log(Liso) and Log(Epkz)
-            MVNCOV(1,2)=MVNCOV(1,1)*MVNCOV(2,2)*RHO(9)
-            MVNCOV(2,1)=MVNCOV(1,2)
-        ! Expressions below correspond to corr(Liso,Eiso) = correlation of Log(Liso) and Log(Eiso).
-            MVNCOV(1,3)=MVNCOV(1,1)*MVNCOV(3,3)*RHO(10)
-            MVNCOV(3,1)=MVNCOV(1,3)
-        ! Expressions below correspond to corr(Liso,T90z) = correlation of Log(Liso) and Log(Epkz)
-            MVNCOV(1,4)=MVNCOV(1,1)*MVNCOV(4,4)*RHO(11)
-            MVNCOV(4,1)=MVNCOV(1,4)
-        ! Expressions below correspond to corr(Epkz,Eiso) = correlation of Log(Epkz) and Log(Eiso)
-            MVNCOV(2,3)=MVNCOV(2,2)*MVNCOV(3,3)*RHO(12)
-            MVNCOV(3,2)=MVNCOV(2,3)
-        ! Expressions below correspond to corr(Epkz,T90z) = correlation of Log(Epkz) and Log(T90z)
-            MVNCOV(2,4)=MVNCOV(2,2)*MVNCOV(4,4)*RHO(13)
-            MVNCOV(4,2)=MVNCOV(2,4)
-        ! Expressions below correspond to corr(Eiso,T90z) = correlation of Log(Eiso) and Log(T90z)
-            MVNCOV(3,4)=MVNCOV(3,3)*MVNCOV(4,4)*RHO(14)
-            MVNCOV(4,3)=MVNCOV(3,4)
-        do i=1,nvar
-            MVNCOV(i,i)=MVNCOV(i,i)**2
-            ! This corresponds to lisosigma^2,epkzsigma^2,eisosigma^2,t90zsigma^2 respectively.
-        end do
-        INVMVNCOV(1:nvar,1:nvar)=MVNCOV(1:nvar,1:nvar)
-        if (posdef(INVMVNCOV(1:nvar,1:nvar),nvar)==0) then
-            write(*,*) 'Covariance matrix of LGRBs model not positive definite..cycling..'
-            getLogPostProb=-huge(getLogPostProb)
-            RETURN
-        end if
-        normfac=determinant(nvar,nvar,MVNCOV(1:nvar,1:nvar))
-        if (normfac<=0) then
-            write(*,*) 'Covariance determinant of SGRBs model is <=0',normfac,posdef(MVNCOV(1:nvar,1:nvar),nvar)
-            do i=1,nvar
-                write(*,*) (MVNCOV(i,j),j=1,nvar)
-            end do
-            STOP
-        end if
-        normfac=39.478417604357434*dsqrt(normfac)    ! (2*Pi)^(nvar/2)=39.478417604357434
-        call inversematrix(nvar,nvar,MVNCOV(1:nvar,1:nvar),INVMVNCOV(1:nvar,1:nvar))
-        !WRITE(*,*) 'HELLO!!!!'
-    ! Do model integrations:
-        !z=0.d0    ! This is only for the observer frame fitting
-        
-        CALL CPU_TIME(time_integration_start)
-        
-        !modelint=modelintz(z)
-        
-        call qromb(modelintz,zmin,zmax,modelint)
-        
-        !do i=1,nz
-        !    call midexp(modelintz,zmin,zmax,modelint,i)
-        !    if (modelint<0.d0) then
-        !        !write(*,*) 'model_integral (variable modelint in getLogPostProb.f90) is <zero:',modelint
-        !        write(*,*) 'Recycling...'
-        !        !write(9834,'(1I30,16E30.5)') i,(PARAM(j),j=1,npar)  
-        !        getLogPostProb=-huge(zmin)
-        !        return
-        !    end if
-        !end do
 
-        CALL CPU_TIME(time_integration_end)
-        WRITE(888,'(2F25.9)') modelint,time_integration_end-time_integration_start
+        rhoEpkzLisoGivenDurz = ( rhoLisoEpkz - rhoLisoDurz * rhoEpkzDurz ) / sqrt( (1._RK-rhoLisoDurz**2) * (1._RK-rhoEpkzDurz**2) )
 
-        !!! write(*,*) 'model integral: ',modelint
-        if (modelint<=0.0d0) then
-            write(*,*) 'model_integral (variable modelint in getLogPostProb.f90) is <=zero:',modelint
-            write(*,*) 'Press Enter to continue...'
-            read(*,*)
+        ! conditional standard deviations of logEpkz and logLiso given logDurz.
+
+        mv_LogLisoGivenLogDurz%std = sqrt(1._RK - rhoLisoDurz**2) * mv_Std%logLiso
+        mv_LogEpkzGivenLogDurz%std = sqrt(1._RK - rhoEpkzDurz**2) * mv_Std%logEpkz
+        mv_LogEpkzGivenLogDurzLogLiso%std = sqrt(1._RK - rhoEpkzLisoGivenDurz**2) * mv_LogEpkzGivenLogDurz%std
+
+        mv_LogLisoGivenLogDurz%tilt = rhoLisoDurz * mv_Std%logLiso / mv_Std%logDurz
+        mv_LogEpkzGivenLogDurz%tilt = rhoEpkzDurz * mv_Std%logEpkz / mv_Std%logDurz
+        mv_LogLisoGivenLogDurz%bias = mv_Avg%logLiso - mv_Avg%logDurz * mv_LogLisoGivenLogDurz%tilt
+        mv_LogEpkzGivenLogDurz%bias = mv_Avg%logEpkz - mv_Avg%logDurz * mv_LogEpkzGivenLogDurz%tilt
+        mv_LogEpkzGivenLogDurzLogLiso%tilt = rhoEpkzLisoGivenDurz * mv_LogEpkzGivenLogDurz%std / mv_LogLisoGivenLogDurz%std
+  
+        ! terms used in the conditional distribution of logEpkz given logLiso / logDurz or logLiso given logDurz.
+
+        mv_logLisoInvStdSqrt2   = 1._RK / (mv_Std%logLiso * SQRT2)   ! scale factor in the exponent of Gaussian distribution.
+        mv_logLisoInvStdSqrt2pi = 1._RK / (mv_Std%logLiso * SQRT2PI) ! normalization constant of the univariate Gaussian function.
+
+        mv_logDurzInvStdSqrt2   = 1._RK / (mv_Std%logDurz * SQRT2)   ! scale factor in the exponent of Gaussian distribution.
+        mv_logDurzInvStdSqrt2pi = 1._RK / (mv_Std%logDurz * SQRT2PI) ! normalization constant of the univariate Gaussian function.
+
+        mv_LogLisoGivenLogDurz%invStdSqrt2     = 1._RK / (mv_LogLisoGivenLogDurz%std * SQRT2)
+        mv_LogLisoGivenLogDurz%invStdSqrt2pi   = 1._RK / (mv_LogLisoGivenLogDurz%std * SQRT2PI)
+
+        mv_LogEpkzGivenLogDurz%invStdSqrt2     = 1._RK / (mv_LogEpkzGivenLogDurz%std * SQRT2)
+        mv_LogEpkzGivenLogDurz%invStdSqrt2pi   = 1._RK / (mv_LogEpkzGivenLogDurz%std * SQRT2PI)
+
+        mv_LogEpkzGivenLogDurzLogLiso%invStdSqrt2     = 1._RK / (mv_LogEpkzGivenLogDurzLogLiso%std * SQRT2)
+        mv_LogEpkzGivenLogDurzLogLiso%invStdSqrt2pi   = 1._RK / (mv_LogEpkzGivenLogDurzLogLiso%std * SQRT2PI)
+
+        !write(output_unit,"(*(g20.13))") ((mv_CholeskyLowerLogNormModel(i,j),j=1,NVAR),new_line("A"),i=1,NVAR)
+        call getCholeskyFactor(NVAR,mv_CholeskyLowerLogNormModel,mv_DiagonalLogNormModel)
+        if (mv_DiagonalLogNormModel(1)<0._RK) then
+            !write(output_unit,"(*(g0))") "covariance matrix not positive definite..cycling.."
+            !write(output_unit,"(*(g20.13))") ((mv_CholeskyLowerLogNormModel(i,j),j=1,NVAR),new_line("A"),i=1,NVAR)
+            logNormCoefLogPostProb = NEGINF_RK
+            return
         end if
-    ! End of model integration.
-    ! Now calculate the likelihood of data:
-        getLogPostProb = 0._RK
-        GRBPROBINTEG: do idata=1,ndata
-            ! Do redshift integration:
-                !call qromo(probatz,zmin,zmax,probDetectionGRB,midexp)
-                call qromb(probatz,zmin,zmax,probDetectionGRB)
-                !z=0.d0
-                !do i=1,nz
-                !    call midexp(probatz,zmin,zmax,probDetectionGRB,i)
-                !end do
-                
-                !probDetectionGRB=probatz(z)
-                
-                if (probDetectionGRB<=0.0d0) then
-                    write(*,*) 'logprob is negative or zero:', probDetectionGRB
-                    write(*,*) 'GRB number in the input file:', idata
-                    !write(*,*) 'Press Enter to continue...'
-                    !read(*,*)
-                end if
-                probDetectionGRB=probDetectionGRB/(modelint*normfac)
-            ! End of redshift integration
-            if (probDetectionGRB==0.d0) then
-                getLogPostProb = -huge(probDetectionGRB)
-                write(*,*) 'Log(Likelihood) is set to -huge'
-                return
-            else
-                getLogPostProb = getLogPostProb + dlog(probDetectionGRB)
+ 
+        ! (2*pi)^(NVAR/2)(=39.478417604357434)*sqrt(determinant)
+        normFac = SQRT_TWOPI_POW_NVAR * product(mv_DiagonalLogNormModel)
+        if (normFac<=0) then
+            write(output_unit,"(*(g0))") "sqrt of covariance determinant is <=0: ", normFac
+            write(output_unit,"(*(g0))") "Cholesky mv_DiagonalLogNormModel: "
+            write(output_unit,"(*(g0))") mv_DiagonalLogNormModel
+            write(output_unit,"(*(g0))") "mv_CholeskyLowerLogNormModel/CovarianceMatrix: "
+            write(output_unit,"(*(g20.13))") ((mv_CholeskyLowerLogNormModel(i,j),j=1,NVAR),new_line("A"),i=1,NVAR)
+            stop
+        end if
+
+        ! get the full Inverse covariance matrix
+
+        mv_InvCovMatLogNormModel = getInvMatFromCholFac(NVAR,mv_CholeskyLowerLogNormModel,mv_DiagonalLogNormModel)
+
+        ! compute the normalization factor of the world model by integrating over all GRB attributes, subject to BATSE threshold
+
+#if defined quadpackDPR
+        call    dqag( f             = getModelIntOverLogDurzGivenRedshift   &
+                    , a             = zoneMin                               &
+                    , b             = zoneMax                               &
+                    , epsabs        = 0._RK                                 &
+                    , epsrel        = zoneTol                               &
+                    , key           = 1_IK                                  &
+                    , result        = modelint                              &
+                    , abserr        = relerr                                &
+                    , neval         = neval                                 &
+                    , ier           = ierr                                  &
+                    , limit         = limit                                 &
+                    , lenw          = lenw                                  &
+                    , last          = last                                  &
+                    , iwork         = iwork                                 &
+                    , work          = work                                  &
+                    )
+        if (mv_ierr .or. ierr/=0_IK) then
+            write(output_unit,"(*(g0))") "FATAL: @qag(): error occurred while computing model integral over redshift. ierr, neval = ", mv_ierr, neval
+            error stop
+        end if
+#elif defined quadpackSPR
+        call     qag( f             = getModelIntOverLogDurzGivenRedshift   &
+                    , a             = zoneMin                               &
+                    , b             = zoneMax                               &
+                    , epsabs        = 0._RK                                 &
+                    , epsrel        = zoneTol                               &
+                    , key           = 1_IK                                  &
+                    , result        = modelint                              &
+                    , abserr        = relerr                                &
+                    , neval         = neval                                 &
+                    , ier           = ierr                                  &
+                    )
+        if (mv_ierr .or. ierr/=0_IK) then
+            write(output_unit,"(*(g0))") "FATAL: @qag(): error occurred while computing model integral over redshift. ierr=", mv_ierr
+            error stop
+        end if
+#else
+#if defined ERR_ESTIMATION_ENABLED
+        zgrb_count  = 0_IK
+        liso_count  = 0_IK
+        epkz_count  = 0_IK
+        zgrb_neval  = 0._RK
+        liso_neval  = 0._RK
+        epkz_neval  = 0._RK
+        zgrb_relerr = 0._RK
+        liso_relerr = 0._RK
+        epkz_relerr = 0._RK
+#endif
+        call doQuadRombClosed   ( getFunc           = getModelIntOverLogDurzGivenRedshift   &
+                                , lowerLim          = zoneMin                               &
+                                , upperLim          = zoneMax                               &
+                                , maxRelativeError  = zoneTol                               &
+                                , nRefinement       = zoneRef                               &
+                                , integral          = modelint                              &
+                                , relativeError     = relerr                                &
+                                , numFuncEval       = neval                                 &
+                                , ierr              = ierr                                  &
+                                )
+        !call doQuadRombOpen ( getFunc           = getModelIntOverLogDurzGivenRedshift   &
+        !                    , integrate         = midexp                                &
+        !                    , lowerLim          = zoneMin                               &
+        !                    , upperLim          = zoneMax                               &
+        !                    , maxRelativeError  = zoneTol                               &
+        !                    , nRefinement       = zoneRef                               &
+        !                    , integral          = modelint                              &
+        !                    , relativeError     = relerr                                &
+        !                    , numFuncEval       = neval                                 &
+        !                    , ierr              = ierr                                  &
+        !                    )
+        !write(*,*) "Zone: ", neval, relerr / modelint
+        if (mv_ierr/=0_IK .or. ierr/=0_IK) then
+            if (ierr/=0_IK) mv_ierr = ierr
+            write(output_unit,"(*(g0))") ErrorMessage(mv_ierr)
+            write(getErrFileUnit(),"(*(g0,:,','))") "getModelIntOverLogDurzGivenRedshift", zoneMin, zoneMax, modelint, relerr, neval, mv_counter
+            logNormCoefLogPostProb = NEGINF_RK
+            return
+            !error stop
+        end if
+#if defined ERR_ESTIMATION_ENABLED
+        zone_neval  = neval
+        zone_relerr = abs(relerr) / modelint
+#endif
+#endif
+        if (modelint<=0.0_RK) then
+            write(output_unit,"(*(g0))") "model_integral (variable modelint in getLogNormCoefLogPostProb.f90) is non-positive: ", modelint
+            write(getErrFileUnit(),"(*(g0,:,','))") "nonPositiveModelint", zoneMin, zoneMax, modelint, relerr, neval, mv_counter
+            logNormCoefLogPostProb = NEGINF_RK
+            return
+            !error stop
+        end if
+
+        logNormCoefLogPostProb(1) = -log(modelint*normFac)
+        if (logPostProbNotNeeded) return
+
+        ! marginalize over all possible redshifts
+
+        logNormCoefLogPostProb(2) = GRB%count * logNormCoefLogPostProb(1)
+        loopLogPostProb: do mv_igrb = 1, GRB%count
+            !probGRB = getProbGRB(2.5_RK)
+#if defined quadpackDPR
+            call    dqag( f             = getProbGRB    &
+                        , a             = zoneMin       &
+                        , b             = zoneMax       &
+                        , epsabs        = 0._RK         &
+                        , epsrel        = zoneTol       &
+                        , key           = 1_IK          &
+                        , result        = probGRB       &
+                        , abserr        = relerr        &
+                        , neval         = neval         &
+                        , ier           = ierr          &
+                        , limit         = limit         &
+                        , lenw          = lenw          &
+                        , last          = last          &
+                        , iwork         = iwork         &
+                        , work          = work          &
+                        )
+            if (mv_ierr/=0_IK .or. ierr/=0_IK) then
+                write(output_unit,"(*(g0))") "FATAL: @qag(): error occurred while computing probGRB. ierr=", mv_ierr, ierr
+                error stop
             end if
-        end do GRBPROBINTEG
-    END function getLogPostProb
-
-!***********************************************************************************************************************************
-!***********************************************************************************************************************************
-
-    function probatz(z)
-    use Batse_mod, only: ERFC_HEIGHT
-    use MODELparameters
-    use COSMOparameters
-    use Zparameters    !, only: zplus1,logzplus1,lumdisterm,dvdzOzplus1
-    use constants, only: sqrt2,sqrt2Pi,log10Mpc2cmSq4pi
-    !? use GRBworld, only: npar
-    use OBSGRBDATA
-    use detection
-    implicit none
-    real(RK) :: probatz,erfcc,PbolEpk2P1024ph,ldisWickram,delayed_rate_Belz_Li    ! function
-    real(RK) :: lumdisMPc,lumdisMPcSq
-    real(RK) :: expterm,efficiency
-    real(RK), intent(in) :: z
-    zplus1      = z+1.0d0
-    logzplus1   = dlog10(zplus1)
-    lumdisMPc   = ldisWickram(z)
-    lumdisMPcSq = lumdisMPc*lumdisMPc
-    lumdisterm  = log10Mpc2cmSq4pi+dlog10(lumdisMPcSq)    ! This is Log10(4*pi*DL^2) where DL is luminosity distance in units of MPc
-    ! Observed Data Probability
-        X(1)=GRB%Event(idata)%logpbol+lumdisterm-loglisomean                ! logliso-loglisomean
-        X(2)=GRB%Event(idata)%logepk+logzplus1-logepkzmean                ! logepkz-logepkzmean
-        X(3)=GRB%Event(idata)%logsbol+lumdisterm-logzplus1-logeisomean    ! logeiso-logeisomean
-#ifdef KFAC_ONETHIRD_ENABLED
-        X(4)=GRB%Event(idata)%logt90-logzplus1*TIME_DILATION_EXPO-logt90zmean                ! logt90z-logt90zmean
+#elif defined quadpackSPR
+            call     qag( f             = getProbGRB    &
+                        , a             = zoneMin       &
+                        , b             = zoneMax       &
+                        , epsabs        = 0._RK         &
+                        , epsrel        = zoneTol       &
+                        , key           = 1_IK          &
+                        , result        = probGRB       &
+                        , abserr        = relerr        &
+                        , neval         = neval         &
+                        , ier           = ierr          &
+                        )
+            if (mv_ierr/=0_IK .or. ierr/=0_IK) then
+                write(output_unit,"(*(g0))") "FATAL: @qag(): error occurred while computing probGRB. ierr=", mv_ierr, ierr
+                error stop
+            end if
 #else
-        X(4)=GRB%Event(idata)%logt90-logzplus1-logt90zmean                ! logt90z-logt90zmean
+            call doQuadRombClosed   ( getFunc           = getProbGRB    &
+                                    , lowerLim          = zoneMin       &
+                                    , upperLim          = zoneMax       &
+                                    , maxRelativeError  = zoneTol       &
+                                    , nRefinement       = zoneRef       &
+                                    , integral          = probGRB       &
+                                    , relativeError     = relerr        &
+                                    , numFuncEval       = neval         &
+                                    , ierr              = ierr          &
+                                    )
+            !call doQuadRombOpen ( getFunc           = getProbGRB    &
+            !                    , integrate         = midexp        &
+            !                    , lowerLim          = zoneMin       &
+            !                    , upperLim          = zoneMax       &
+            !                    , maxRelativeError  = zoneTol       &
+            !                    , nRefinement       = zoneRef       &
+            !                    , integral          = probGRB       &
+            !                    , relativeError     = relerr        &
+            !                    , numFuncEval       = neval         &
+            !                    , ierr              = ierr          &
+            !                    )
+            !write(*,*) "Zone, ith GRB: ", mv_igrb, neval, relerr / probGRB
+            if (mv_ierr/=0_IK .or. ierr/=0_IK) then
+                if (ierr/=0_IK) mv_ierr = ierr
+                write(output_unit,"(*(g0))") ErrorMessage(mv_ierr)
+                write(getErrFileUnit(),"(*(g0,:,','))") "getProbGRB", zoneMin, zoneMax, probGRB, relerr, neval, mv_counter
+                logNormCoefLogPostProb(2) = NEGINF_RK
+                return
+                !error stop
+            end if
+#if defined ERR_ESTIMATION_ENABLED
+        zgrb_count  = zgrb_count + 1_IK
+        zgrb_neval  = zgrb_neval + neval
+        zgrb_relerr = zgrb_relerr + abs(relerr) / probGRB
 #endif
-        expterm=0.5d0*dot_product(X,matmul(INVMVNCOV(1:nvar,1:nvar),X))
-        !logp1024ph_eff=GRB%Event(idata)%logp1024ph+&
-        !ERFC_HEIGHT*erfcc((GRB%Event(idata)%logt90-ERFC_AVG)/ERFC_STD)
-        !if (logp1024ph_eff<eff_min_pph) then
-        !    efficiency=0.d0
-        if (GRB%Event(idata)%logPF53<eff_max_pph) then
-            efficiency=0.5d0+0.5d0*(1.d0-erfcc((GRB%Event(idata)%logPF53-meanthresh)/sqrt2stdevthresh))
-        else ! if (GRB%Event(idata)%logPF53>=eff_max_pph) then
-            efficiency=1.d0
-        !else
-        !    write(*,*) 'Wrong efficiency limit in getLogPostProb.f90, eff_min_pph,eff_max_pph:',eff_min_pph,eff_max_pph
-        !    STOP
+#endif
+            if (probGRB<=0.0_RK) then
+                !write(output_unit,"(*(g0))") "WARNING: probGRB <= 0.0_RK: ", probGRB, ". Setting logNormCoefLogPostProb(2) = NEGINF_RK ..."
+                write(getErrFileUnit(),"(*(g0,:,','))") "nonPositiveProbGRB", zoneMin, zoneMax, probGRB, relerr, neval, mv_counter
+                logNormCoefLogPostProb(2) = NEGINF_RK
+                return
+                !exit loopLogPostProb
+            end if
+            logNormCoefLogPostProb(2) = logNormCoefLogPostProb(2) + log(probGRB)
+        end do loopLogPostProb
+
+#if defined ERR_ESTIMATION_ENABLED
+        zgrb_neval = zgrb_neval / zgrb_count
+        liso_neval = liso_neval / liso_count
+        epkz_neval = epkz_neval / epkz_count
+        zgrb_relerr = zgrb_relerr / zgrb_count
+        liso_relerr = liso_relerr / liso_count
+        epkz_relerr = epkz_relerr / epkz_count
+#endif
+
+    end function getLogNormCoefLogPostProb
+
+!***********************************************************************************************************************************
+!***********************************************************************************************************************************
+
+    ! integral of grb world model at given redshift z, detemined by zone.
+    function getModelIntOverLogDurzGivenRedshift(zone) result(modelIntOverLogDurzGivenRedshift)
+
+        use, intrinsic :: iso_fortran_env, only: output_unit
+        use Cosmology_mod, only: LOGMPC2CMSQ4PI, getLogLumDisWicMpc
+       !use IntegrationOverLiso_mod, only: doQuadRombClosed, ErrorMessage
+        use Integration_mod, only: doQuadRombClosed, ErrorMessage
+        use StarFormation_mod, only: getLogBinaryMergerRateS15
+        use Constants_mod, only: RK, SPR
+        use Batse_mod, only: THRESH_ERFC_AVG
+        implicit none
+
+        character(*), parameter :: PROCEDURE_NAME = "@getModelIntOverLogDurzGivenRedshift()"
+        real(RK), intent(in)    :: zone
+        real(RK)                :: relerr 
+        real(RK)                :: modelIntOverLogDurzGivenRedshift
+        integer(IK)             :: neval, ierr
+
+        if (mv_ierr/=0_IK) then
+            modelIntOverLogDurzGivenRedshift = NEGINF_RK
+            return
         end if
-        
-        probatz=delayed_rate_Belz_Li(z)*efficiency/dexp(expterm)
-        
-        ! Calculate the LGRB rate at redshift z:
-        ! ATTN: Note that a factor of CoverH*4.*pi is intentionally dropped in the calculation of dVdZ below for a higher efficiency of the code.
-        ! Also the luminosity distance used here must be in units of MPc, if the Hubble parameter is also in units of MPc (which is, as in CoverH).
-        ! Also here dvdz is infact divided by an extra zplus1 (which gives zplus1**3 in the denominator), again for efficiency purposes.
-        !! not needed for delayed_rate: dvdzOzplus1=lumdisMPcSq/(zplus1**3*dsqrt(omega_DM*zplus1**3+omega_DE))    !*CoverH*4.d0*pi*MPc2cm*MPc2cm*MPc2cm
-        ! note that dvdzOzplus1 is infact dvdz/(z+1) a factor that appears later in calculations, however is included here for code efficiency.
-        ! note that dvdz lacks some constant factors, that I droped for higher code efficiency. dvdz is in units of MPc^3
-        !! not needed for delayed rate:  if (z<z0) then
-        !! not needed for delayed rate:      probatz=dvdzOzplus1*zplus1**g0*efficiency/dexp(expterm)            ! rate=dvdzOzplus1*zplus1**g0
-        !! not needed for delayed rate:  else if (z>=z0 .and. z<z1) then
-        !! not needed for delayed rate:      probatz=gamma1*dvdzOzplus1*zplus1**g1*efficiency/dexp(expterm)    ! rate=gamma1*dvdzOzplus1*zplus1**g1
-        !! not needed for delayed rate:  else if (z>=z1) then
-        !! not needed for delayed rate:      probatz=gamma2*dvdzOzplus1*zplus1**g2*efficiency/dexp(expterm)    ! rate=gamma2*dvdzOzplus1*zplus1**g2
-        !! not needed for delayed rate:  else
-        !! not needed for delayed rate:      write(*,*) 'invalid redshift input in Likelihood integration, z:', z
-        !! not needed for delayed rate:      write(*,*) 'Press Enter to continue...'
-        !! not needed for delayed rate:      read(*,*)
-        !! not needed for delayed rate:  end if
-        !probatz=efficiency/dexp(expterm)
-        !write(*,*) 'expterm in parobatz.f90 = ',expterm
-        !write(*,*) 'efficiency in parobatz.f90 = ',efficiency
-        !write(*,*) 'Press Enter to continue...'
-        !read(*,*)
-    END function probatz
 
-!***********************************************************************************************************************************
-!***********************************************************************************************************************************
-
-    function modelintz(z)    ! integral of GRB world model at given redshift z.
-    use Batse_mod, only: ERFC_AVG
-    use MODELparameters, only: sqrt2lisosigma,loglisomean
-    use COSMOparameters
-    use Zparameters    !, only: zplus1,lumdisterm,logzplus1,dvdz,probz
-    use constants, only: log10Mpc2cmSq4pi
-    !? use GRBworld, only: npar
-    use OBSGRBDATA
-    use detection
-    implicit none
-    real(RK), intent(in) :: z
-    real(RK) :: lumdisMPc,lumdisMPcSq,erfcc
-    real(RK) :: modelintz,ldisWickram,delayed_rate_Belz_Li        ! function
-    !real(RK), EXTERNAL :: probatdurz    ! function
-    zplus1      = z+1.0d0
-    logzplus1   = dlog10(zplus1)
-#ifdef KFAC_ONETHIRD_ENABLED
-    logzplus1_dur = logzplus1*TIME_DILATION_EXPO
+        mv_logZone = log(zone)
+#if defined kfacOneThird
+        mv_logZoneKfacCorrected = mv_logZone * TIME_DILATION_EXPO
+#elif defined kfacNone
+        mv_logZoneKfacCorrected = mv_logZone
 #else
-    logzplus1_dur = logzplus1
+#error "Unknown kfactor in BatseSgrbWorldModel_mod.f90"
 #endif
-    lumdisMPc   = ldisWickram(z)
-    lumdisMPcSq = lumdisMPc*lumdisMPc
-    lumdisterm  = log10Mpc2cmSq4pi+dlog10(lumdisMPcSq) ! This is Log10(4*pi*DL^2) where DL is luminosity distance in units of MPc
-    ! INTEGRATION_LIMIT_LOGDUR_MIN & INTEGRATION_LIMIT_LOGDUR_MAX, is zero, such that at the given redshift z, that correspond to the rest-frame durations:
-    meandurz = ERFC_AVG-logzplus1_dur
-    logdurzmin = INTEGRATION_LIMIT_LOGDUR_MIN-logzplus1_dur
-    logdurzmax = INTEGRATION_LIMIT_LOGDUR_MAX-logzplus1_dur
-    ! This means 3 times above and below ERFC_AVG for which erf3==Erf(3.d0)=0.9999779095030014, which I assum to be 1.
-    ! The two parameters below will be used for integration over Epk:
-    logepkzmin=logepkmin+logzplus1
-    logepkzmax=logepkmax+logzplus1
-    ! Beginning of model integration.
-    ! Here I divide the integration over duration into two parts: The duration distribution is a Gaussian with mean logdurzmean.
-    ! Since the integration is over an infinite range of duration, the method used here is midexp algorithm.
-    ! Beacuse midexp is only accurate for an ever_decreasing function, I use it only for the durz>logdurzmean+4sigma=uppert90zlim
-    ! I use my own revised code midexp_mirror for the durz<logdurzmean-4sigma=lowert90zlim where the Gaussian is ever_increasing.
-        ! Here is the integration between the two ranges:
-            call qrombDur(probatdurz,logdurzmin,logdurzmax,modelintz)
-        ! Now add the integration part for which the trigger efficiency is 100%, for any GRB observed duration:
-            modelintz=modelintz+0.5d0*erfcc((glb_max_lpb+lumdisterm-loglisomean)/sqrt2lisosigma)    ! Integral of model at redshift z.
-            
-            modelintz=modelintz*delayed_rate_Belz_Li(z)
-            
-            !! not needed for delayed rate:  dvdzOzplus1=lumdisMPcSq/(zplus1**3*dsqrt(omega_DM*zplus1**3+omega_DE))    !*CoverH*4.d0*pi*MPc2cm*MPc2cm*MPc2cm
-        ! note that dvdzOzplus1 is infact dvdz/(z+1) a factor that appears later in calculations, however is included here for code efficiency.
-        ! note that dvdz lacks some constant factors, that I droped for higher code efficiency. dvdz is in units of MPc^3
-            !! not needed for delayed rate:  if (z<z0) then
-            !! not needed for delayed rate:      modelintz=modelintz*dvdzOzplus1*zplus1**g0            ! rate=dvdzOzplus1*zplus1**g0
-            !! not needed for delayed rate:  else if (z>=z0 .and. z<z1) then
-            !! not needed for delayed rate:      modelintz=modelintz*gamma1*dvdzOzplus1*zplus1**g1    ! rate=gamma1*dvdzOzplus1*zplus1**g1
-            !! not needed for delayed rate:  else if (z>=z1) then
-            !! not needed for delayed rate:      modelintz=modelintz*gamma2*dvdzOzplus1*zplus1**g2    ! rate=gamma2*dvdzOzplus1*zplus1**g2
-            !! not needed for delayed rate:  else
-            !! not needed for delayed rate:      write(*,*) 'invalid redshift input in Likelihood integration, z:', z
-            !! not needed for delayed rate:      write(*,*) 'Press Enter to continue...'
-            !! not needed for delayed rate:      read(*,*)
-            !! not needed for delayed rate:  end if
-    ! End of model integration.
-    END function modelintz
-!    ---------------------------------
-    function probatdurz(logdurz)    ! This function refers to Integrates over Liso and Epk, by the use of the function ProbatLisoGivenDurz.
-    use Batse_mod, only: ERFC_HEIGHT, ERFC_STD
-    use MODELparameters    !, only: loglisomean,logt90zmean
-    use COSMOparameters
-    use Zparameters
-    use detection
-    implicit none
-    real(RK) :: probatdurz,logdurz
-    real(RK) :: erfcc    ! function
-    real(RK), EXTERNAL :: ProbatLisoGivenDurz    ! function
-    pph_correction=ERFC_HEIGHT*erfcc((logdurz-meandurz)/ERFC_STD)
-    min_lpb_at_dur=eff_min_lpb+pph_correction
-    conlisomeanD=aLD+bLD*logdurz
-    conepkzmeanD=aED+bED*logdurz
-    aELD=conepkzmeanD-conlisomeanD*bELD    ! term used in the coditional distribution of Epk given Luminosity.
-    ! Integrate Epk-Liso bivariate distribution at the given logdurz:
-        call qrombPbol(ProbatLisoGivenDurz,min_lpb_at_dur+lumdisterm,glb_max_lpb+lumdisterm,probatdurz)
-        probatdurz=probatdurz/&
-        (sqrt2Pit90zsigma*dexp(((logdurz-logt90zmean)/sqrt2t90zsigma)**2))
-    END function probatdurz
-!    ---------------------------------
-    function ProbatLisoGivenDurz(logliso)
-    use MODELparameters    !, only: sqrt2conlisosigmaD,sqrt2conepkzsigmaLD,sqrt2PiconlisosigmaD,aEL,bEL,conepkzmeanLD,loglisomean
-    use Zparameters, only: lumdisterm
-    use detection
-    implicit none
-    real(RK) :: logliso,ProbatLisoGivenDurz,efficiency    ! erfcc
-    real(RK), EXTERNAL :: EpkzProbGivenLisoDurz
-    conepkzmeanLD=aELD+bELD*logliso ! ATT: This is in fact "lumdisterm" minus the mean of the conditional dist. of Epkz given Liso.
-    log10pbol=logliso-lumdisterm
-    call qrombEpk(EpkzProbGivenLisoDurz,logepkzmin,logepkzmax,ProbatLisoGivenDurz)
-    ! Now add the integration of the tails of the conditional Epk distribution given Liso (i.e. logliso) and logdurz.
-        !XXX efficiency=0.5d0+0.5d0*(1.d0-erfcc((logp1024min+log10pbol-meanthresh_at_dur)/sqrt2stdevthresh))
-        !XXX ProbatLisoGivenDurz=ProbatLisoGivenDurz+efficiency*&
-        !XXX (0.5d0*erfcc((logepkzmax-conepkzmeanLD)/sqrt2conepkzsigmaLD)+&
-        !XXX 1.0d0-0.5d0*erfcc((logepkzmin-conepkzmeanLD)/sqrt2conepkzsigmaLD))
-    ProbatLisoGivenDurz=ProbatLisoGivenDurz/&
-    (sqrt2PiconlisosigmaD*dexp(((logliso-conlisomeanD)/sqrt2conlisosigmaD)**2))
-    END function ProbatLisoGivenDurz
-!    ---------------------------------
-    function EpkzProbGivenLisoDurz(logepkz)
-    use MODELparameters !, only: sqrt2conepkzsigmaLD,sqrt2PiconepkzsigmaLD,conepkzmean
-    use Zparameters, only: logzplus1
-    use detection
-    implicit none
-    real(RK) :: EpkzProbGivenLisoDurz,erfcc,logepkz,efficiency,PbolEpk2P1024ph
-    efficiency=0.5d0+0.5d0*&
-    (1.d0-erfcc((PbolEpk2P1024ph(logepkz-logzplus1,log10pbol)-pph_correction-meanthresh)/sqrt2stdevthresh))
-    EpkzProbGivenLisoDurz=efficiency/&
-    (sqrt2PiconepkzsigmaLD*dexp(((logepkz-conepkzmeanLD)/sqrt2conepkzsigmaLD)**2))
-    END function EpkzProbGivenLisoDurz
+        mv_logLisoLogPbolDiff = LOGMPC2CMSQ4PI + 2_IK * getLogLumDisWicMpc(zone) ! This is later used in 
 
+        ! These are used in getModelIntOverLogLisoGivenRedshiftDurz()
+
+        mv_thresh_erfc_avg_at_z = THRESH_ERFC_AVG - mv_logZoneKfacCorrected
+
+        ! These are used in getModelIntOverLogLisoGivenDurz()
+
+        mv_logEpkzMin = INTEGRATION_LIMIT_LOGEPK_MIN + mv_logZone
+        mv_logEpkzMax = INTEGRATION_LIMIT_LOGEPK_MAX + mv_logZone
+
+        ! compute world model integral over logDurz in the varying BATSE efficiency range, for the given z.
+
+        !mv_logLisoAtFullEfficiency = mv_Thresh%logPbolMax + mv_logLisoLogPbolDiff
+        call doQuadRombClosed   ( getFunc           = getModelIntOverLogLisoGivenRedshiftDurz                   &
+                                , lowerLim          = INTEGRATION_LIMIT_LOGDUR_MIN - mv_logZoneKfacCorrected    &
+                                , upperLim          = INTEGRATION_LIMIT_LOGDUR_MAX - mv_logZoneKfacCorrected    &
+                                , maxRelativeError  = durzTol                                                   &
+                                , nRefinement       = durzRef                                                   &
+                                , integral          = modelIntOverLogDurzGivenRedshift                          &
+                                , relativeError     = relerr                                                    &
+                                , numFuncEval       = neval                                                     &
+                                , ierr              = ierr                                                      &
+                                )
+#if defined ERR_ESTIMATION_ENABLED
+        durz_count  = durz_count + 1_IK
+        durz_neval  = durz_neval + neval
+        durz_relerr = durz_relerr + abs(relerr) / modelIntOverLogDurzGivenRedshift
+#endif
+        if (ierr/=0_IK .or. mv_ierr/=0_IK) then
+            if (ierr/=0_IK) mv_ierr = ierr
+            write(output_unit,"(*(g0))") PROCEDURE_NAME // ErrorMessage(mv_ierr)
+            write(getErrFileUnit(),"(*(g0,:,','))"  ) "getModelIntOverLogLisoGivenRedshiftDurz" &
+                                                    , INTEGRATION_LIMIT_LOGDUR_MIN - mv_logZoneKfacCorrected &
+                                                    , INTEGRATION_LIMIT_LOGDUR_MAX - mv_logZoneKfacCorrected &
+                                                    , modelIntOverLogDurzGivenRedshift &
+                                                    , relerr, neval, mv_counter
+            modelIntOverLogDurzGivenRedshift = NEGINF_RK
+            return
+            !error stop
+        end if
+
+        ! add the analytical integral of the logLiso range within which BATSE efficiency is 100%
+        ! then, multiply the integral result by the GRB rate density at the given redshift
+
+        modelIntOverLogDurzGivenRedshift    = &
+                                            ( modelIntOverLogDurzGivenRedshift &
+                                            + 0.5_RK * erfc( real( (mv_Thresh%logPbolMax+mv_logLisoLogPbolDiff-mv_Avg%logLiso)*mv_logLisoInvStdSqrt2, kind=ERFK) ) &
+                                            ) &
+                                            * getLogBinaryMergerRateS15(zone-1._RK)
+
+    end function getModelIntOverLogDurzGivenRedshift
+
+!***********************************************************************************************************************************
+!***********************************************************************************************************************************
+
+    ! integral of grb world model at given redshift z, determined by zone, and durz. equivalent to probatdurz
+    function getModelIntOverLogLisoGivenRedshiftDurz(logDurz) result(modelIntOverLogLisoGivenRedshiftDurz)
+
+        use, intrinsic :: iso_fortran_env, only: output_unit
+        use Cosmology_mod, only: LOGMPC2CMSQ4PI, getLogLumDisWicMpc
+       !use IntegrationOverLiso_mod, only: doQuadRombClosed, ErrorMessage
+        use Integration_mod, only: doQuadRombClosed, ErrorMessage
+        use Constants_mod, only: RK, SPR
+        use Batse_mod, only: THRESH_ERFC_AMP, THRESH_ERFC_STD_INV
+        implicit none
+
+        character(*), parameter :: PROCEDURE_NAME = "@getModelIntOverLogLisoGivenRedshiftDurz()"
+        real(RK), intent(in)    :: logDurz
+        real(RK)                :: relerr
+        real(RK)                :: minLogPbolGivenDur
+        real(RK)                :: modelIntOverLogLisoGivenRedshiftDurz
+        integer(IK)             :: neval, ierr
+
+        if (mv_ierr/=0_IK) then
+            modelIntOverLogLisoGivenRedshiftDurz = NEGINF_RK
+            return
+        end if
+
+        mv_effectivePeakPhotonFluxCorrection = THRESH_ERFC_AMP * erfc(real((logDurz-mv_thresh_erfc_avg_at_z)*THRESH_ERFC_STD_INV,kind=ERFK)) 
+        minLogPbolGivenDur = mv_Thresh%logPbolMin + mv_effectivePeakPhotonFluxCorrection
+
+        mv_LogLisoGivenLogDurz%avg = mv_LogLisoGivenLogDurz%bias + mv_LogLisoGivenLogDurz%tilt * logDurz
+        mv_LogEpkzGivenLogDurz%avg = mv_LogEpkzGivenLogDurz%bias + mv_LogEpkzGivenLogDurz%tilt * logDurz
+        mv_LogEpkzGivenLogDurzLogLiso%bias = mv_LogEpkzGivenLogDurz%avg - mv_LogLisoGivenLogDurz%avg * mv_LogEpkzGivenLogDurzLogLiso%tilt
+
+        ! compute world model integral over logLiso in the varying BATSE efficiency range, for the given z.
+        call doQuadRombClosed   ( getFunc           = getModelIntOverLogEpkzGivenRedshiftDurzLiso   &
+                                , lowerLim          = minLogPbolGivenDur + mv_logLisoLogPbolDiff    &
+                                , upperLim          = mv_Thresh%logPbolMax + mv_logLisoLogPbolDiff  &
+                                , maxRelativeError  = lisoTol                                       &
+                                , nRefinement       = lisoRef                                       &
+                                , integral          = modelIntOverLogLisoGivenRedshiftDurz          &
+                                , relativeError     = relerr                                        &
+                                , numFuncEval       = neval                                         &
+                                , ierr              = ierr                                          &
+                                )
+#if defined ERR_ESTIMATION_ENABLED
+        liso_count  = liso_count + 1_IK
+        liso_neval  = liso_neval + neval
+        liso_relerr = liso_relerr + abs(relerr) / modelIntOverLogLisoGivenRedshiftDurz
+#endif
+        if (ierr/=0_IK .or. mv_ierr/=0_IK) then
+            if (ierr/=0_IK) mv_ierr = ierr
+            write(output_unit,"(*(g0))") PROCEDURE_NAME // ErrorMessage(mv_ierr)
+            write(getErrFileUnit(),"(*(g0,:,','))"  ) "getModelIntOverLogEpkzGivenRedshiftDurzLiso" &
+                                                    , mv_Thresh%logPbolMin + mv_logLisoLogPbolDiff &
+                                                    , mv_logLisoAtFullEfficiency &
+                                                    , modelIntOverLogLisoGivenRedshiftDurz &
+                                                    , relerr, neval, mv_counter
+            modelIntOverLogLisoGivenRedshiftDurz = NEGINF_RK
+            return
+            !error stop
+        end if
+
+        ! add the analytical integral of the logLiso range within which BATSE efficiency is 100%
+        modelIntOverLogLisoGivenRedshiftDurz    = modelIntOverLogLisoGivenRedshiftDurz * mv_logDurzInvStdSqrt2pi &
+                                                * exp( -( (logDurz-mv_Avg%logDurz) * mv_logDurzInvStdSqrt2 )**2 )
+
+    end function getModelIntOverLogLisoGivenRedshiftDurz
+
+!***********************************************************************************************************************************
+!***********************************************************************************************************************************
+
+    function getModelIntOverLogEpkzGivenRedshiftDurzLiso(logLiso) result(modelIntOverLogEpkzGivenRedshiftDurzLiso)
+
+        use, intrinsic :: iso_fortran_env, only: output_unit
+        use Batse_mod, only: MIN_LOGPH53_4_LOGPBOLZERO
+        use Integration_mod, only: doQuadRombClosed, ErrorMessage
+       !use IntegrationOverEpkz_mod, only: doQuadRombClosed, ErrorMessage
+        use Constants_mod, only: RK
+
+        implicit none
+        character(*), parameter :: PROCEDURE_NAME = "@getModelIntOverLogEpkzGivenRedshiftDurzLiso()"
+        real(RK), intent(in)    :: logLiso
+        real(RK)                :: modelIntOverLogEpkzGivenRedshiftDurzLiso
+        real(RK)                :: relerr
+        integer(IK)             :: neval
+
+        if (mv_ierr/=0_IK) then
+            modelIntOverLogEpkzGivenRedshiftDurzLiso = NEGINF_RK
+            return
+        end if
+
+        mv_LogEpkzGivenLogDurzLogLiso%avg = mv_LogEpkzGivenLogDurzLogLiso%bias + mv_LogEpkzGivenLogDurzLogLiso%tilt * logLiso
+        mv_logPbol = logLiso - mv_logLisoLogPbolDiff
+
+        call doQuadRombClosed   ( getFunc           =  getProbEpkzGivenRedshiftDurzLiso         &
+                                , lowerLim          =  mv_logEpkzMin                            &
+                                , upperLim          =  mv_logEpkzMax                            &
+                                , maxRelativeError  =  epkzTol                                  &
+                                , nRefinement       =  epkzRef                                  &
+                                , integral          =  modelIntOverLogEpkzGivenRedshiftDurzLiso &
+                                , relativeError     =  relerr                                   &
+                                , numFuncEval       =  neval                                    &
+                                , ierr              =  mv_ierr                                  &
+                                )
+#if defined ERR_ESTIMATION_ENABLED
+        epkz_count  = epkz_count + 1_IK
+        epkz_neval  = epkz_neval + neval
+        epkz_relerr = epkz_relerr + abs(relerr) / modelIntOverLogEpkzGivenRedshiftDurzLiso
+#endif
+        if (mv_ierr/=0_IK) then
+            write(output_unit,"(*(g0))") PROCEDURE_NAME // ErrorMessage(mv_ierr)
+            write(getErrFileUnit(),"(*(g0,:,','))"  ) "getProbEpkzGivenRedshiftDurzLiso" &
+                                                    , mv_logEpkzMin &
+                                                    , mv_logEpkzMax &
+                                                    , modelIntOverLogEpkzGivenRedshiftDurzLiso &
+                                                    , relerr, neval, mv_counter
+            modelIntOverLogEpkzGivenRedshiftDurzLiso = NEGINF_RK
+            return
+            !error stop
+        end if
+
+        ! add integral of the tails of the conditional logEpkz distribution given mv_logLiso
+
+        modelIntOverLogEpkzGivenRedshiftDurzLiso    = modelIntOverLogEpkzGivenRedshiftDurzLiso * mv_LogLisoGivenLogDurz%invStdSqrt2pi &
+                                                    * exp( -( (logLiso-mv_LogLisoGivenLogDurz%avg) * mv_LogLisoGivenLogDurz%invStdSqrt2 )**2 )
+
+    end function getModelIntOverLogEpkzGivenRedshiftDurzLiso
+
+!***********************************************************************************************************************************
+!***********************************************************************************************************************************
+
+    pure function getProbEpkzGivenRedshiftDurzLiso(logEpkz) result(probEpkzGivenRedshiftDurzLiso)
+        use Constants_mod, only: RK
+        use Batse_mod, only: getLogPF53
+        implicit none
+        real(RK), intent(in)    :: logEpkz
+        real(RK)                :: probEpkzGivenRedshiftDurzLiso, efficiency
+        real(ERFK)              :: normedLogPF53
+        normedLogPF53 = ( getLogPF53(logEpkz-mv_logZone,mv_logPbol) - mv_effectivePeakPhotonFluxCorrection - mv_Thresh%avg) * mv_Thresh%invStdSqrt2
+        efficiency = 0.5_RK + 0.5_RK * erf(normedLogPF53)
+        probEpkzGivenRedshiftDurzLiso   = efficiency * mv_LogEpkzGivenLogDurzLogLiso%invStdSqrt2pi &
+                                        * exp( -( (logEpkz-mv_LogEpkzGivenLogDurzLogLiso%avg)*mv_LogEpkzGivenLogDurzLogLiso%invStdSqrt2)**2 )
+    end function getProbEpkzGivenRedshiftDurzLiso
+
+!***********************************************************************************************************************************
+!***********************************************************************************************************************************
+
+    function getProbGRB(zone) result(probGRB)
+
+        use StarFormation_mod, only: getLogBinaryMergerRateS15
+        use Cosmology_mod, only: LOGMPC2CMSQ4PI, getLogLumDisWicMpc
+        use Constants_mod, only: RK
+        use Batse_mod, only: getLogPF53
+        implicit none
+        real(RK), intent(in)    :: zone
+        real(RK)                :: probGRB
+        real(RK)                :: MeanSubtractedVar(NVAR)
+        real(RK)                :: logZone, logLisoLogPbolDiff
+        real(ERFK)              :: normedLogPF53
+
+        logZone = log(zone)
+        logLisoLogPbolDiff = LOGMPC2CMSQ4PI + 2_IK * getLogLumDisWicMpc(zone) ! log(4*pi*dl^2) where dl is luminosity distance in units of mpc
+
+        ! observed data probability
+
+        MeanSubtractedVar(1) = GRB%Event(mv_igrb)%logPbol - mv_Avg%logLiso + logLisoLogPbolDiff
+        MeanSubtractedVar(2) = GRB%Event(mv_igrb)%logEpk  - mv_Avg%logEpkz + logZone
+        MeanSubtractedVar(3) = GRB%Event(mv_igrb)%logsbol - mv_Avg%logEiso - logZone + logLisoLogPbolDiff
+#if defined kfacOneThird
+        MeanSubtractedVar(4) = GRB%Event(mv_igrb)%logt90  - mv_Avg%logDurz - logZone * TIME_DILATION_EXPO
+#elif defined kfacNone
+        MeanSubtractedVar(4) = GRB%Event(mv_igrb)%logt90  - mv_Avg%logDurz - logZone
+#else
+#error "kfactor model requested in BatseSgrbWorldModel_mod.f90"
+#endif
+
+        normedLogPF53 = mv_Thresh%invStdSqrt2 * ( GRB%Event(mv_igrb)%logPF53 - mv_Thresh%avg )
+        
+
+        probGRB = (0.5_RK + 0.5_RK * erf(normedLogPF53))    &   ! BATSE efficiency
+                * getLogBinaryMergerRateS15(zone-1._RK)     &   ! merger rate
+                * exp( - 0.5_RK * dot_product( MeanSubtractedVar , matmul(mv_InvCovMatLogNormModel,MeanSubtractedVar) ) )
+
+    end function getProbGRB
+
+!***********************************************************************************************************************************
+!***********************************************************************************************************************************
+
+    pure function getBatseEfficiency(normedLogPF53) result(batseEfficiency)
+        use Constants_mod, only: RK
+        implicit none
+        real(RK), intent(in) :: normedLogPF53
+        real(RK)             :: batseEfficiency
+        batseEfficiency = 0.5_RK + 0.5_RK * erf( real( normedLogPF53 , kind=ERFK ) )
+    end function getBatseEfficiency
+
+!***********************************************************************************************************************************
+!***********************************************************************************************************************************
+
+    pure function getBatseEfficiencyApprox(logEpk,logPbol) result(batseEfficiency)
+        use Constants_mod, only: RK
+        use Batse_mod, only: getLogPF53
+        implicit none
+        real(RK), intent(in) :: logEpk,logPbol
+        real(RK)             :: batseEfficiency
+        real(RK)             :: normedLogPF53
+        if ( logPbol < mv_Thresh%logPbolMin ) then
+            batseEfficiency = 0._RK
+        elseif ( logPbol < mv_Thresh%logPbolMax ) then
+            normedLogPF53 = ( getLogPF53(logEpk,logPbol) - mv_Thresh%avg ) * mv_Thresh%invStdSqrt2
+            batseEfficiency = 0.5_RK + 0.5_RK * erf( real( normedLogPF53 , kind=ERFK ) )
+        elseif ( logPbol >= mv_Thresh%logPbolMax ) then
+            batseEfficiency = 1._RK
+        end if
+    end function getBatseEfficiencyApprox
+
+!***********************************************************************************************************************************
+!***********************************************************************************************************************************
+
+    ! create the error-catching report file
+    function getErrFileUnit() result(errFileUnit)
+        use String_mod, only: num2str
+        implicit none
+        integer(IK) :: errFileUnit
+        integer(IK), save :: imageID = 1_IK, imageCount = 1_IK, dummyFileUnit = 1_IK
+        if (dummyFileUnit>0_IK) then
+#if defined MPI_ENABLED
+            block
+                use mpi
+                integer(IK) :: ierrMPI
+                logical     :: isInitialized
+                call mpi_initialized( isInitialized, ierrMPI )
+                if (.not. isInitialized) call mpi_init(ierrMPI)
+                call mpi_comm_rank(mpi_comm_world, imageID, ierrMPI)
+                call mpi_comm_size(mpi_comm_world, imageCount, ierrMPI)
+                imageID = imageID + 1_IK ! make the ranks consistent with Fortran coarray indexing conventions
+            end block
+#endif
+            open(newunit=dummyFileUnit,file="divergenceErrorReport_"//num2str(imageID)//".txt",status="replace")
+            write(dummyFileUnit,"(*(g0,:,','))" ) "errorLocation", "integrationLowerLimit", "integrationUpperLimit", "integrationResult", "relerr", "neval", "MCMCStep"
+        end if
+        errFileUnit = dummyFileUnit
+    end function getErrFileUnit
+
+!***********************************************************************************************************************************
+!***********************************************************************************************************************************
+
+        !close(errFileUnit)
 !***********************************************************************************************************************************
 !***********************************************************************************************************************************
 

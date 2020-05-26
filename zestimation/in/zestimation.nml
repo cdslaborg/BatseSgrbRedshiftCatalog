@@ -1,0 +1,8 @@
+&InputData
+
+    ngrb = 565
+    inputBatseDataFile  = ".\in\batseDataSGRB565.in"
+    outputBatseDataFile = ".\in\batseDataSGRB565.out"
+    outDir              = ".\out\"
+
+/
