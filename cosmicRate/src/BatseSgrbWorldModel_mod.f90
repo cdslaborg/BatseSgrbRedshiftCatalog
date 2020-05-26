@@ -32,7 +32,7 @@ module BatseSgrbWorldModel_mod
     ! world model parameters
     ! *********************************************
 
-    integer(IK) , parameter :: ERFK = SPR   ! the real kind of the input value to erf()
+    integer(IK) , parameter :: ERFK = RK    ! the real kind of the input value to erf()
     integer(IK) , parameter :: NVAR = 4_IK  ! number of GRB attributes used in the world model
     integer(IK) , parameter :: NPAR = 16_IK ! number of world model's parameters
 
@@ -71,10 +71,10 @@ module BatseSgrbWorldModel_mod
 
     real(RK)    :: zoneMin = 1.09_RK    ! 1.1e0_RK
     real(RK)    :: zoneMax = 7.501_RK   ! 2.1e1_RK
-    real(RK)    :: zoneTol = 1.e-4_RK
-    real(RK)    :: durzTol = 5.e-5_RK
-    real(RK)    :: lisoTol = 1.e-5_RK
-    real(RK)    :: epkzTol = 5.e-6_RK
+    real(RK)    :: zoneTol = 1.e-3_RK   ! 1.e-4_RK
+    real(RK)    :: durzTol = 1.e-4_RK   ! 5.e-5_RK
+    real(RK)    :: lisoTol = 5.e-5_RK   ! 1.e-5_RK
+    real(RK)    :: epkzTol = 1.e-6_RK   ! 5.e-6_RK
     integer(IK) :: zoneRef = 4_IK
     integer(IK) :: durzRef = 4_RK
     integer(IK) :: lisoRef = 5_RK
@@ -149,8 +149,8 @@ contains
 #elif defined quadpackSPR
         use QuadPackSPR_mod, only: qag
 #else
-       !use Integration_mod, only: doQuadRombOpen, ErrorMessage, midexp
-        use Integration_mod, only: doQuadRombClosed, ErrorMessage
+        use Integration_mod, only: doQuadRombOpen, ErrorMessage, midexp
+        !use Integration_mod, only: doQuadRombClosed, ErrorMessage
 #endif
         use Matrix_mod, only: getCholeskyFactor, getInvMatFromCholFac
         use Batse_mod, only: MIN_LOGPH53_4_LOGPBOLZERO, MAX_LOGPH53_4_LOGPBOLZERO, THRESH_LOGPBOL64_CORRECTION
@@ -169,8 +169,6 @@ contains
         real(RK)                    :: rhoEisoDurz
         real(RK)                    :: rhoEpkzLisoGivenDurz
         real(RK)                    :: modelint ! integral of the model over the redshift range given by variable zone.
-        !real(RK)                   :: lumsigma,epkzsigma,conepkzsigma,normFac
-        !real(RK), external         :: midexp,getProbGRB
 
         ! integration variables
 
@@ -340,27 +338,27 @@ contains
         liso_relerr = 0._RK
         epkz_relerr = 0._RK
 #endif
-        call doQuadRombClosed   ( getFunc           = getModelIntOverLogDurzGivenRedshift   &
-                                , lowerLim          = zoneMin                               &
-                                , upperLim          = zoneMax                               &
-                                , maxRelativeError  = zoneTol                               &
-                                , nRefinement       = zoneRef                               &
-                                , integral          = modelint                              &
-                                , relativeError     = relerr                                &
-                                , numFuncEval       = neval                                 &
-                                , ierr              = ierr                                  &
-                                )
-        !call doQuadRombOpen ( getFunc           = getModelIntOverLogDurzGivenRedshift   &
-        !                    , integrate         = midexp                                &
-        !                    , lowerLim          = zoneMin                               &
-        !                    , upperLim          = zoneMax                               &
-        !                    , maxRelativeError  = zoneTol                               &
-        !                    , nRefinement       = zoneRef                               &
-        !                    , integral          = modelint                              &
-        !                    , relativeError     = relerr                                &
-        !                    , numFuncEval       = neval                                 &
-        !                    , ierr              = ierr                                  &
-        !                    )
+        !call doQuadRombClosed   ( getFunc           = getModelIntOverLogDurzGivenRedshift   &
+        !                        , lowerLim          = zoneMin                               &
+        !                        , upperLim          = zoneMax                               &
+        !                        , maxRelativeError  = zoneTol                               &
+        !                        , nRefinement       = zoneRef                               &
+        !                        , integral          = modelint                              &
+        !                        , relativeError     = relerr                                &
+        !                        , numFuncEval       = neval                                 &
+        !                        , ierr              = ierr                                  &
+        !                        )
+        call doQuadRombOpen ( getFunc           = getModelIntOverLogDurzGivenRedshift   &
+                            , integrate         = midexp                                &
+                            , lowerLim          = zoneMin                               &
+                            , upperLim          = zoneMax                               &
+                            , maxRelativeError  = zoneTol                               &
+                            , nRefinement       = zoneRef                               &
+                            , integral          = modelint                              &
+                            , relativeError     = relerr                                &
+                            , numFuncEval       = neval                                 &
+                            , ierr              = ierr                                  &
+                            )
         !write(*,*) "Zone: ", neval, relerr / modelint
         if (mv_ierr/=0_IK .or. ierr/=0_IK) then
             if (ierr/=0_IK) mv_ierr = ierr
@@ -429,27 +427,27 @@ contains
                 error stop
             end if
 #else
-            call doQuadRombClosed   ( getFunc           = getProbGRB    &
-                                    , lowerLim          = zoneMin       &
-                                    , upperLim          = zoneMax       &
-                                    , maxRelativeError  = zoneTol       &
-                                    , nRefinement       = zoneRef       &
-                                    , integral          = probGRB       &
-                                    , relativeError     = relerr        &
-                                    , numFuncEval       = neval         &
-                                    , ierr              = ierr          &
-                                    )
-            !call doQuadRombOpen ( getFunc           = getProbGRB    &
-            !                    , integrate         = midexp        &
-            !                    , lowerLim          = zoneMin       &
-            !                    , upperLim          = zoneMax       &
-            !                    , maxRelativeError  = zoneTol       &
-            !                    , nRefinement       = zoneRef       &
-            !                    , integral          = probGRB       &
-            !                    , relativeError     = relerr        &
-            !                    , numFuncEval       = neval         &
-            !                    , ierr              = ierr          &
-            !                    )
+            !call doQuadRombClosed   ( getFunc           = getProbGRB    &
+            !                        , lowerLim          = zoneMin       &
+            !                        , upperLim          = zoneMax       &
+            !                        , maxRelativeError  = zoneTol       &
+            !                        , nRefinement       = zoneRef       &
+            !                        , integral          = probGRB       &
+            !                        , relativeError     = relerr        &
+            !                        , numFuncEval       = neval         &
+            !                        , ierr              = ierr          &
+            !                        )
+            call doQuadRombOpen ( getFunc           = getProbGRB    &
+                                , integrate         = midexp        &
+                                , lowerLim          = zoneMin       &
+                                , upperLim          = zoneMax       &
+                                , maxRelativeError  = zoneTol       &
+                                , nRefinement       = zoneRef       &
+                                , integral          = probGRB       &
+                                , relativeError     = relerr        &
+                                , numFuncEval       = neval         &
+                                , ierr              = ierr          &
+                                )
             !write(*,*) "Zone, ith GRB: ", mv_igrb, neval, relerr / probGRB
             if (mv_ierr/=0_IK .or. ierr/=0_IK) then
                 if (ierr/=0_IK) mv_ierr = ierr
@@ -544,6 +542,7 @@ contains
                                 , numFuncEval       = neval                                                     &
                                 , ierr              = ierr                                                      &
                                 )
+!write(*,*) modelIntOverLogDurzGivenRedshift
 #if defined ERR_ESTIMATION_ENABLED
         durz_count  = durz_count + 1_IK
         durz_neval  = durz_neval + neval
@@ -561,7 +560,6 @@ contains
             return
             !error stop
         end if
-
         ! add the analytical integral of the logLiso range within which BATSE efficiency is 100%
         ! then, multiply the integral result by the GRB rate density at the given redshift
 
@@ -617,6 +615,7 @@ contains
                                 , numFuncEval       = neval                                         &
                                 , ierr              = ierr                                          &
                                 )
+!write(*,*) modelIntOverLogLisoGivenRedshiftDurz
 #if defined ERR_ESTIMATION_ENABLED
         liso_count  = liso_count + 1_IK
         liso_neval  = liso_neval + neval
@@ -677,6 +676,7 @@ contains
                                 , numFuncEval       =  neval                                    &
                                 , ierr              =  mv_ierr                                  &
                                 )
+!write(*,*) modelIntOverLogEpkzGivenRedshiftDurzLiso
 #if defined ERR_ESTIMATION_ENABLED
         epkz_count  = epkz_count + 1_IK
         epkz_neval  = epkz_neval + neval
@@ -704,7 +704,8 @@ contains
 !***********************************************************************************************************************************
 !***********************************************************************************************************************************
 
-    pure function getProbEpkzGivenRedshiftDurzLiso(logEpkz) result(probEpkzGivenRedshiftDurzLiso)
+    !pure function getProbEpkzGivenRedshiftDurzLiso(logEpkz) result(probEpkzGivenRedshiftDurzLiso)
+    function getProbEpkzGivenRedshiftDurzLiso(logEpkz) result(probEpkzGivenRedshiftDurzLiso)
         use Constants_mod, only: RK
         use Batse_mod, only: getLogPF53
         implicit none
@@ -715,6 +716,14 @@ contains
         efficiency = 0.5_RK + 0.5_RK * erf(normedLogPF53)
         probEpkzGivenRedshiftDurzLiso   = efficiency * mv_LogEpkzGivenLogDurzLogLiso%invStdSqrt2pi &
                                         * exp( -( (logEpkz-mv_LogEpkzGivenLogDurzLogLiso%avg)*mv_LogEpkzGivenLogDurzLogLiso%invStdSqrt2)**2 )
+!if (probEpkzGivenRedshiftDurzLiso<=0._RK) then
+!    write(*,*) "normedLogPF53 = ", normedLogPF53
+!    write(*,*) "efficiency = ", efficiency
+!    write(*,*) "(logEpkz-mv_LogEpkzGivenLogDurzLogLiso%avg)*mv_LogEpkzGivenLogDurzLogLiso%invStdSqrt2)**2 = ", ( (logEpkz-mv_LogEpkzGivenLogDurzLogLiso%avg)*mv_LogEpkzGivenLogDurzLogLiso%invStdSqrt2)**2
+!    write(*,*) "exp( -( (logEpkz-mv_LogEpkzGivenLogDurzLogLiso%avg)*mv_LogEpkzGivenLogDurzLogLiso%invStdSqrt2)**2 ) = ", exp( -( (logEpkz-mv_LogEpkzGivenLogDurzLogLiso%avg)*mv_LogEpkzGivenLogDurzLogLiso%invStdSqrt2)**2 )
+!    write(*,*) "probEpkzGivenRedshiftDurzLiso = ", probEpkzGivenRedshiftDurzLiso
+!    error stop
+!end if
     end function getProbEpkzGivenRedshiftDurzLiso
 
 !***********************************************************************************************************************************

@@ -6,7 +6,7 @@ module ParaPost_mod
 
     character(*), parameter :: MODULE_NAME = "@ParaPost_mod"
 
-    integer(IK) , parameter :: NSAMPLE = 5000_IK
+    integer(IK) , parameter :: NSAMPLE = 250_IK ! 5000_IK
     integer(IK) , parameter :: NVAR = 4     ! number of GRB attributes used in the world model
     integer(IK) , parameter :: NPAR = 16    ! number of world model's parameters
 

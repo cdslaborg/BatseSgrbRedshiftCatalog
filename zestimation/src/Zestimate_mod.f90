@@ -1,6 +1,6 @@
 module Zestimate_mod
 
-    use Batse_mod, only: NVAR, GRB, Trigger, NGRB => NLGRB
+    use Batse_mod, only: NVAR, GRB, Trigger, NGRB => NSGRB
     use ParaPost_mod, only: NSAMPLE, ParaPost
     use Constants_mod, only: IK, RK, PI
 #if defined H06
@@ -110,7 +110,7 @@ contains
 
         fileName = outPath//"zgrid.txt"
         open(newunit=fileUnit,file=fileName,status="replace")
-        write(fileUnit,"(*(g0))") "z,logLuminosityDistance,logLgrbRate"
+        write(fileUnit,"(*(g0))") "z,logLuminosityDistance,logRateGRB"
         do iz = 1, NZ
 
             mv_Zinfo(iz)%logzplus1  = logZoneMin + real(iz-1,kind=RK) * DELTA_LOGZPLUS1

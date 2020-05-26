@@ -1,4 +1,20 @@
-rateModelList = ["H06","L08","B10","M14","M17","F18"];
+close all;
+%clear all;
+format compact; format long;
+filePath = mfilename('fullpath');
+addpath(genpath("../lib/"));
+addpath(genpath('../../../../../lib/matlab/')) % lib codes
+
+% change directory to the srouce code directory
+filePath = mfilename('fullpath');
+[scriptPath,~,~] = fileparts(filePath); cd(scriptPath); % Change working directory to source code directory.
+cd(scriptPath); % Change working directory to source code directory.
+
+figExportRequested = true;
+fontSize = 12;
+
+%rateModelList = ["H06","L08","B10","M14","M17","F18"];
+rateModelList = "L08";
 for rateModel = rateModelList
 
     %disp("processing rate model " + rateModel)
@@ -12,14 +28,28 @@ for rateModel = rateModelList
 
     z = importdata(fullfile(rootDir,'zgrid.txt'));
 
-    figure; hold on;
-    for i = 1:30:zprobFileListLen
+    figure; hold on; box on;
+    for i = 1:25:zprobFileListLen
         d = importdata(fullfile(rootDir,zprobFileList(i)));
-        plot( z.data(:,1) , d.data(:,1) );
+        plot( z.data(:,1) ...
+            , d.data(:,1) ...
+            ..., 'linewidth', 1 ...
+            );
     end
-    hold off;
+    xlim([0 5]);
+    xlabel("Redshift ( z )","interpreter","tex");
+    ylabel("Probability Density Function");
 
-    xlim([0 7])
+    set(gca,'fontSize', fontSize)
+    set(gca,'color', 'white')
+    set(gcf,'color','white')
+    if figExportRequested
+        export_fig(fullfile(scriptPath, "zprob_" + rateModel + ".png"),"-m4 -transparent")
+        hold off; close(gcf);
+    else
+        hold off;
+    end
+
     %set(gca,'xscale','log','yscale','linear')
 
     zstat = importdata(fullfile(rootDir,'batse_zstat.txt'));
@@ -30,3 +60,4 @@ for rateModel = rateModelList
     %mean(zstat.data(:,8) ./ zstat.data(:,4))
 
 end
+
