@@ -134,10 +134,10 @@ contains
 
     pure function getMergerDelayTimeDistLognormal(mergerDelayTime) result(mergerDelayTimeDistLognormal)
         use Statistics_mod, only: getLogProbLogNorm
-        use Constants_mod, only: RK
+        use Constants_mod, only: RK, LN10
         implicit none
-        real(RK)    , parameter :: LOG_MEAN = -1._RK                ! mean of the lognormal merger delay time dist in GYrs.
-        real(RK)    , parameter :: SIGMA = 1.11943638_RK            ! standard deviation of the lognormal merger delay time dist.
+        real(RK)    , parameter :: LOG_MEAN = log(0.1_RK)           ! mean of the lognormal merger delay time dist in GYrs.
+        real(RK)    , parameter :: SIGMA = LN10 * 1.11943638_RK     ! standard deviation of the lognormal merger delay time dist.
         real(RK)    , parameter :: INV_VARIANCE = 1._RK/SIGMA**2
         real(RK)    , parameter :: LOG_SQRT_INV_VARIANCE = log(sqrt(INV_VARIANCE))
         real(RK), intent(in)    :: mergerDelayTime
