@@ -129,15 +129,21 @@ contains
         implicit none
         real(RK), intent(in)    :: zplus1
         real(RK)                :: starFormationRateDensity
-        starFormationRateDensity = exp( getLogRateDensity(log(zplus1)) )
+        starFormationRateDensity = exp  ( getLogRateDensity ( &
+#if defined M14 || defined M17 || defined F18
+                                                            zplus1 = zplus1, &
+#endif
+                                                            logzplus1 = log(zplus1) &
+                                                            ) &
+                                        )
     end function getStarFormationRateDensity
 
     pure function getMergerDelayTimeDistLognormal(mergerDelayTime) result(mergerDelayTimeDistLognormal)
         use Statistics_mod, only: getLogProbLogNorm
-        use Constants_mod, only: RK, LN10
+        use Constants_mod, only: RK !, LN10
         implicit none
-        real(RK)    , parameter :: LOG_MEAN = log(0.1_RK)           ! mean of the lognormal merger delay time dist in GYrs.
-        real(RK)    , parameter :: SIGMA = LN10 * 1.11943638_RK     ! standard deviation of the lognormal merger delay time dist.
+        real(RK)    , parameter :: LOG_MEAN = log(0.1_RK)   ! mean of the lognormal merger delay time dist in GYrs.
+        real(RK)    , parameter :: SIGMA = 0.9612813_RK     ! 1.11943638_RK ! standard deviation of the lognormal merger delay time dist.
         real(RK)    , parameter :: INV_VARIANCE = 1._RK/SIGMA**2
         real(RK)    , parameter :: LOG_SQRT_INV_VARIANCE = log(sqrt(INV_VARIANCE))
         real(RK), intent(in)    :: mergerDelayTime

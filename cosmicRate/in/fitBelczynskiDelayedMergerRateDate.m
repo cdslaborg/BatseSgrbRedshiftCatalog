@@ -13,21 +13,23 @@ cd(scriptPath); % Change working directory to source code directory.
 if exist('belczynskiDelayedMergerRate','var')
     warning("skipping input data reading...");
 else
-    load('belczynskiDelayedMergerRate.mat');
+    load('belczynskiDelayedMergerRate.mat'); % this belczynskiDelayedMergerRate data is in log base 10
 end
 
 % find best fit parameters
 
 delay = belczynskiDelayedMergerRate(2:end-1,1);
-count = exp( log(10) * belczynskiDelayedMergerRate(2:end-1,2) );
+count = exp( log(10) * belczynskiDelayedMergerRate(2:end-1,2) ); % convert data to log in natural base and take the exponential
 
 %getFunc = @(param,t) param(1) * lognpdf(t,0.1,param(2)); % lognormal
 %param0 = [7.715888876935963   1.304336236656980];
 
-mu = log(0.1);
-getFunc = @(param,t) ( param(1) * lognpdf(t,log(0.1),param(2)) ); % lognormal
-param0 = [5000 1.304336236656980];
+mu = log(0.1); % the mean of the lognormal merger delay time distribution
+getFunc = @(param,t) ( param(1) * lognpdf(t,log(0.1),param(2)) ); % lognormal fit
+param0 = [5000 1.304336236656980]; % initial parameters
 [paramBest,resnorm,~,exitflag,output] = lsqcurvefit(getFunc,param0,delay,count);
+
+disp(newline + "Best Fit Parameters: " + join(string(paramBest)," ") + newline);
 
 % plot results
 
