@@ -424,11 +424,11 @@ echo. -- !BUILD_NAME! - from: !MergerDelayDist_ROOT_PATH!\in\!MTYPE!.nml   %= no
 echo. -- !BUILD_NAME! -   to: !MergerDelayDist_BIN_DIR!\in\  %= final slash tells this is folder =%
 xcopy /s /Y "!MergerDelayDist_ROOT_PATH!\in\!MTYPE!.nml" "!MergerDelayDist_BIN_DIR!\in\"
 echo.
-echo. -- !BUILD_NAME! - copying BATSE data to the executable's directory
-echo. -- !BUILD_NAME! - from: !MergerDelayDist_ROOT_PATH!\in\!BATSE_DATA_FILE_NAME!   %= no need for final slash here =%
-echo. -- !BUILD_NAME! -   to: !MergerDelayDist_BIN_DIR!\in\  %= final slash tells this is folder =%
-xcopy /s /Y "!MergerDelayDist_ROOT_PATH!\in\!BATSE_DATA_FILE_NAME!" "!MergerDelayDist_BIN_DIR!\in\"
-echo.
+REM echo. -- !BUILD_NAME! - copying BATSE data to the executable's directory
+REM echo. -- !BUILD_NAME! - from: !MergerDelayDist_ROOT_PATH!\in\!BATSE_DATA_FILE_NAME!   %= no need for final slash here =%
+REM echo. -- !BUILD_NAME! -   to: !MergerDelayDist_BIN_DIR!\in\  %= final slash tells this is folder =%
+REM xcopy /s /Y "!MergerDelayDist_ROOT_PATH!\in\!BATSE_DATA_FILE_NAME!" "!MergerDelayDist_BIN_DIR!\in\"
+REM echo.
 
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :: run MergerDelayDist executable

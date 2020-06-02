@@ -28,7 +28,7 @@ real(RK)    , parameter     :: ZPLUS1_MAX = 21._RK    ! 9.9_RK
 real(RK)    , parameter     :: NZPLUS1 = (ZPLUS1_MAX-ZPLUS1_MIN) / DELTA_ZPLUS1 
 
 integer(IK)                 :: i
-real(RK)                    :: zplus1(0:NZPLUS1), logzplus1, binaryMergerRate(NZPLUS1), starFormationRate(NZPLUS1)
+real(RK)                    :: zplus1(0:NZPLUS1), binaryMergerRate(NZPLUS1), starFormationRate(NZPLUS1), logzplus1
 
 !integer(IK)                 :: nargin                  ! number of input arguments
 !integer(IK)                 :: outputFileLen           ! length of the output file string
@@ -77,13 +77,13 @@ zplus1(0) = ZPLUS1_MIN - DELTA_ZPLUS1
 do i = 1, nzplus1
     zplus1(i) = zplus1(i-1) + DELTA_ZPLUS1
     if (mod(i,100)==0) write(*,"(*(g0,:,' '))") "redshift =", zplus1(i) - 1._RK
-    binaryMergerRate(i) = getbinaryMergerRate  ( zplus1 = zplus1(i) &
-                                           !, zplus1Max = 100._RK &
-                                           !, nRefinement &
-                                           !, maxRelativeError &
-                                            , getMergerDelayTimePDF = getMergerDelayTimeDistLognormal &
-                                            , getStarFormationRateDensity = getStarFormationRateDensity &
-                                            )
+    binaryMergerRate(i) = getbinaryMergerRate   ( zplus1 = zplus1(i) &
+                                               !, zplus1Max = 100._RK &
+                                                , nRefinement = 7_IK &
+                                               !, maxRelativeError &
+                                                , getMergerDelayTimePDF = getMergerDelayTimeDistLognormal &
+                                                , getStarFormationRateDensity = getStarFormationRateDensity &
+                                                )
     starFormationRate(i) = exp( getLogRate(zplus1(i), log(zplus1(i)), 2*getLogLumDisWicMpc(zplus1(i))) )
     !if (zplus1(i) <= ZPLUS1_MAX) cycle
     !exit
@@ -107,7 +107,11 @@ do i = 1, nzplus1
     write(outputFileUnit,"(*(g0,:,','))") zplus1(i)-1._RK, binaryMergerRate(i), starFormationRate(i) 
 end do
 
+!***********************************************************************************************************************************
+
 contains
+
+    !*******************************************************************************************************************************
 
     pure function getStarFormationRateDensity(zplus1) result(starFormationRateDensity)
 #if defined H06
@@ -138,13 +142,15 @@ contains
                                         )
     end function getStarFormationRateDensity
 
+    !*******************************************************************************************************************************
+
     pure function getMergerDelayTimeDistLognormal(mergerDelayTime) result(mergerDelayTimeDistLognormal)
         use Statistics_mod, only: getLogProbLogNorm
         use Constants_mod, only: RK !, LN10
         implicit none
         real(RK)    , parameter :: LOG_MEAN = log(0.1_RK)   ! mean of the lognormal merger delay time dist in GYrs.
-        real(RK)    , parameter :: SIGMA = 0.9612813_RK     ! 1.11943638_RK ! standard deviation of the lognormal merger delay time dist.
-        real(RK)    , parameter :: INV_VARIANCE = 1._RK/SIGMA**2
+        real(RK)    , parameter :: SIGMA =  0.9612813_RK    ! 1.11943638_RK ! standard deviation of the lognormal merger delay time dist.
+        real(RK)    , parameter :: INV_VARIANCE = 1._RK / SIGMA**2
         real(RK)    , parameter :: LOG_SQRT_INV_VARIANCE = log(sqrt(INV_VARIANCE))
         real(RK), intent(in)    :: mergerDelayTime
         real(RK)                :: mergerDelayTimeDistLognormal
@@ -155,5 +161,7 @@ contains
                                                                 ) &
                                             )
     end function getMergerDelayTimeDistLognormal
+
+    !*******************************************************************************************************************************
 
 end program DelayedMergerRate
