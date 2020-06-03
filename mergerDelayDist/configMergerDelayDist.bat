@@ -12,7 +12,8 @@ set ERRORLEVEL=0
 ::      - the library (dynamic/static)
 :: types will automatically inferred.
 
-set ParaMonte_LIB_ROOT=C:\Users\joshu_s8uy48a\Dropbox\Projects\20180101_ParaMonte\git\build\winx64\intel\19.1.1.216\release\static\heap\serial\Fortran
+
+set ParaMonte_LIB_ROOT=D:\Dropbox\Projects\20180101_ParaMonte\git\build\winx64\intel\19.0.4.245\release\static\heap\serial\Fortran
 set ParaMonte_LIB_NAME=libparamonte_static_heap_release_intel_fortran_windows_x64_mt.lib
 REM set ParaMonte_LIB_ROOT=D:\Dropbox\Projects\20180101_ParaMonte\git\build\winx64\intel\19.0.4.245\release\static\stack\serial\Fortran
 REM set ParaMonte_LIB_NAME=libparamonte_static_stack_release_intel_fortran_windows_x64_mt.lib
