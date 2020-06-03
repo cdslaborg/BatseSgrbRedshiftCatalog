@@ -12,13 +12,13 @@ set ERRORLEVEL=0
 ::      - the library (dynamic/static)
 :: types will automatically inferred.
 
-set ParaMonte_LIB_ROOT=D:\Dropbox\Projects\20180101_ParaMonte\git\build\winx64\intel\19.0.4.245\testing\static\heap\serial\Fortran
-set ParaMonte_LIB_NAME=libparamonte_static_heap_testing_intel_fortran_windows_x64_mt.lib
+set ParaMonte_LIB_ROOT=C:\Users\joshu_s8uy48a\Dropbox\Projects\20180101_ParaMonte\git\build\winx64\intel\19.1.1.216\release\static\heap\serial\Fortran
+set ParaMonte_LIB_NAME=libparamonte_static_heap_release_intel_fortran_windows_x64_mt.lib
 REM set ParaMonte_LIB_ROOT=D:\Dropbox\Projects\20180101_ParaMonte\git\build\winx64\intel\19.0.4.245\release\static\stack\serial\Fortran
 REM set ParaMonte_LIB_NAME=libparamonte_static_stack_release_intel_fortran_windows_x64_mt.lib
 
 :: LGRB world model's SFR model: H06, L08, B10, M14, M17, F18
-set           RATE_DENSITY_MODEL=B10
+set           RATE_DENSITY_MODEL=F18
 
 :: input BATSE data file
 :: set BATSE_DATA_FILE_NAME=batse_1366_lgrb_p1024ph_epk_sch23ph.txt
