@@ -494,7 +494,7 @@ contains
         use Cosmology_mod, only: LOGMPC2CMSQ4PI, getLogLumDisWicMpc
        !use IntegrationOverLiso_mod, only: doQuadRombClosed, ErrorMessage
         use Integration_mod, only: doQuadRombClosed, ErrorMessage
-        use StarFormation_mod, only: getLogBinaryMergerRateS15
+        use StarFormation_mod, only: getBinaryMergerRateS15
         use Constants_mod, only: RK, SPR
         use Batse_mod, only: THRESH_ERFC_AVG
         implicit none
@@ -567,7 +567,7 @@ contains
                                             ( modelIntOverLogDurzGivenRedshift &
                                             + 0.5_RK * erfc( real( (mv_Thresh%logPbolMax+mv_logLisoLogPbolDiff-mv_Avg%logLiso)*mv_logLisoInvStdSqrt2, kind=ERFK) ) &
                                             ) &
-                                            * getLogBinaryMergerRateS15(zone-1._RK)
+                                            * getBinaryMergerRateS15(zone-1._RK)
 
     end function getModelIntOverLogDurzGivenRedshift
 
@@ -731,7 +731,7 @@ contains
 
     function getProbGRB(zone) result(probGRB)
 
-        use StarFormation_mod, only: getLogBinaryMergerRateS15
+        use StarFormation_mod, only: getBinaryMergerRateS15
         use Cosmology_mod, only: LOGMPC2CMSQ4PI, getLogLumDisWicMpc
         use Constants_mod, only: RK
         use Batse_mod, only: getLogPF53
@@ -762,7 +762,7 @@ contains
         
 
         probGRB = (0.5_RK + 0.5_RK * erf(normedLogPF53))    &   ! BATSE efficiency
-                * getLogBinaryMergerRateS15(zone-1._RK)     &   ! merger rate
+                * getBinaryMergerRateS15(zone-1._RK)        &   ! merger rate
                 * exp( - 0.5_RK * dot_product( MeanSubtractedVar , matmul(mv_InvCovMatLogNormModel,MeanSubtractedVar) ) )
 
     end function getProbGRB

@@ -26,6 +26,7 @@ count = exp( log(10) * belczynskiDelayedMergerRate(2:end-1,2) ); % convert data 
 
 mu = log(0.1); % the mean of the lognormal merger delay time distribution
 getFunc = @(param,t) ( param(1) * lognpdf(t,log(0.1),param(2)) ); % lognormal fit
+
 param0 = [5000 1.304336236656980]; % initial parameters
 [paramBest,resnorm,~,exitflag,output] = lsqcurvefit(getFunc,param0,delay,count);
 
