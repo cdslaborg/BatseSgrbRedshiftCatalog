@@ -23,5 +23,14 @@ end
 
 % polynomial fit to this function
 
-global a
-a = 100;
+pf = PolyFit(4,[0,4],[1,10]);
+
+X = -1:0.01:7;
+lenX = length(X);
+Y = zeros(lenX);
+for i = 1:lenX
+    Y(i) = pf.get([1,3,2],X(i));
+end
+
+figure;
+plot(X,Y);

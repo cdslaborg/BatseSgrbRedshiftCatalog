@@ -22,7 +22,7 @@ use StarFormation_mod, only: getbinaryMergerRate
 
 implicit none
 
-real(RK)    , parameter     :: DELTA_ZPLUS1 = 2.5e-2_RK
+real(RK)    , parameter     :: DELTA_ZPLUS1 = 1.e-2_RK
 real(RK)    , parameter     :: ZPLUS1_MIN = 1.03_RK
 real(RK)    , parameter     :: ZPLUS1_MAX = 21._RK    ! 9.9_RK
 real(RK)    , parameter     :: NZPLUS1 = (ZPLUS1_MAX-ZPLUS1_MIN) / DELTA_ZPLUS1 
