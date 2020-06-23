@@ -1,9 +1,9 @@
 ! assuming SFR B10 (of Butler and Bloom 2010)
 &InputData
 
-    ngrb = 1366
-    inputBatseDataFile  = "batse_1366_lgrb_p1024ph_epk_sch23ph.txt"
-    outputBatseDataFile = "batse_1366_lgrb_pbol_epk_sbol(0.001,20000).txt"
+    ngrb = 565
+    inputBatseDataFile  = "batseDataSGRB565.in"
+    outputBatseDataFile = "batseDataSGRB565.out"
 
     zoneMin  = 1.1e0
     zoneMax  = 2.1e1
