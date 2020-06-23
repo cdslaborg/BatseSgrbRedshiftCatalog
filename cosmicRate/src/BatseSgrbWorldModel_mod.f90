@@ -1,17 +1,17 @@
 module BatseSgrbWorldModel_mod
 
 #if defined H06
-    use StarFormation_mod, only: getLogBinaryMergerRate => getLogBinaryMergerRateH06
+    use StarFormation_mod, only: getLogBinaryMergerRate => getLogBinaryMergerRateLognormH06
 #elif defined L08
-    use StarFormation_mod, only: getLogBinaryMergerRate => getLogBinaryMergerRateL08
+    use StarFormation_mod, only: getLogBinaryMergerRate => getLogBinaryMergerRateLognormL08
 #elif defined B10
-    use StarFormation_mod, only: getLogBinaryMergerRate => getLogBinaryMergerRateB10
+    use StarFormation_mod, only: getLogBinaryMergerRate => getLogBinaryMergerRateLognormB10
 #elif defined M14
-    use StarFormation_mod, only: getLogBinaryMergerRate => getLogBinaryMergerRateM14
+    use StarFormation_mod, only: getLogBinaryMergerRate => getLogBinaryMergerRateLognormM14
 #elif defined M17
-    use StarFormation_mod, only: getLogBinaryMergerRate => getLogBinaryMergerRateM17
+    use StarFormation_mod, only: getLogBinaryMergerRate => getLogBinaryMergerRateLognormM17
 #elif defined F18
-    use StarFormation_mod, only: getLogBinaryMergerRate => getLogBinaryMergerRateF18
+    use StarFormation_mod, only: getLogBinaryMergerRate => getLogBinaryMergerRateLognormF18
 #else
 #error "Unknown SFR model in BatseSgrbWorldModel_mod.f90"
 #endif
