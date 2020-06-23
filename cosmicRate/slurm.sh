@@ -23,9 +23,9 @@
 #
 #----------------------------------------------------
 
-#SBATCH -J cosmicRate        # Job name
-#SBATCH -o cosmicRate.%j.out # Name of stdout output file
-#SBATCH -e cosmicRate.%j.err # Name of stderr error file
+#SBATCH -J cosmicRate           # Job name
+#SBATCH -o cosmicRate.%j.out    # Name of stdout output file
+#SBATCH -e cosmicRate.%j.err    # Name of stderr error file
 #SBATCH -p skx-normal           # Queue (partition) name
 #SBATCH -N 1                    # Total # of nodes 
 #SBATCH -n 48                   # Total # of mpi tasks

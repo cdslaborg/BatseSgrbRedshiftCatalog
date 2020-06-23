@@ -1,17 +1,17 @@
 module BatseSgrbWorldModel_mod
 
 #if defined H06
-    use StarFormation_mod, only: getLogRate => getLogRateH06
+    use StarFormation_mod, only: getLogBinaryMergerRate => getLogBinaryMergerRateH06
 #elif defined L08
-    use StarFormation_mod, only: getLogRate => getLogRateL08
+    use StarFormation_mod, only: getLogBinaryMergerRate => getLogBinaryMergerRateL08
 #elif defined B10
-    use StarFormation_mod, only: getLogRate => getLogRateB10
+    use StarFormation_mod, only: getLogBinaryMergerRate => getLogBinaryMergerRateB10
 #elif defined M14
-    use StarFormation_mod, only: getLogRate => getLogRateM14
+    use StarFormation_mod, only: getLogBinaryMergerRate => getLogBinaryMergerRateM14
 #elif defined M17
-    use StarFormation_mod, only: getLogRate => getLogRateM17
+    use StarFormation_mod, only: getLogBinaryMergerRate => getLogBinaryMergerRateM17
 #elif defined F18
-    use StarFormation_mod, only: getLogRate => getLogRateF18
+    use StarFormation_mod, only: getLogBinaryMergerRate => getLogBinaryMergerRateF18
 #else
 #error "Unknown SFR model in BatseSgrbWorldModel_mod.f90"
 #endif
@@ -494,7 +494,7 @@ contains
         use Cosmology_mod, only: LOGMPC2CMSQ4PI, getLogLumDisWicMpc
        !use IntegrationOverLiso_mod, only: doQuadRombClosed, ErrorMessage
         use Integration_mod, only: doQuadRombClosed, ErrorMessage
-        use StarFormation_mod, only: getBinaryMergerRateS15
+        !use StarFormation_mod, only: getBinaryMergerRateS15
         use Constants_mod, only: RK, SPR
         use Batse_mod, only: THRESH_ERFC_AVG
         implicit none
@@ -567,7 +567,8 @@ contains
                                             ( modelIntOverLogDurzGivenRedshift &
                                             + 0.5_RK * erfc( real( (mv_Thresh%logPbolMax+mv_logLisoLogPbolDiff-mv_Avg%logLiso)*mv_logLisoInvStdSqrt2, kind=ERFK) ) &
                                             ) &
-                                            * getBinaryMergerRateS15(zone-1._RK)
+                                            * exp(getLogBinaryMergerRate(mv_logZone))
+                                            !* getBinaryMergerRateS15(zone-1._RK)
 
     end function getModelIntOverLogDurzGivenRedshift
 
@@ -731,7 +732,7 @@ contains
 
     function getProbGRB(zone) result(probGRB)
 
-        use StarFormation_mod, only: getBinaryMergerRateS15
+        !use StarFormation_mod, only: getBinaryMergerRateS15
         use Cosmology_mod, only: LOGMPC2CMSQ4PI, getLogLumDisWicMpc
         use Constants_mod, only: RK
         use Batse_mod, only: getLogPF53
@@ -762,8 +763,7 @@ contains
         
 
         probGRB = (0.5_RK + 0.5_RK * erf(normedLogPF53))    &   ! BATSE efficiency
-                * getBinaryMergerRateS15(zone-1._RK)        &   ! merger rate
-                * exp( - 0.5_RK * dot_product( MeanSubtractedVar , matmul(mv_InvCovMatLogNormModel,MeanSubtractedVar) ) )
+                * exp( getLogBinaryMergerRate(logZone) - 0.5_RK * dot_product( MeanSubtractedVar , matmul(mv_InvCovMatLogNormModel,MeanSubtractedVar) ) )
 
     end function getProbGRB
 

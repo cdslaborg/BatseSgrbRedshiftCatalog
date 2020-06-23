@@ -114,7 +114,7 @@ system when ParaMonte is built via its provided build scripts at the root of its
         --kfac <kfactor correction model for durations: none,onethird> \
         --pmlib <path to the root of the ParaMonte library build> \
         --quad <quadrature method: romberg/quadpackSPR/quadpackDPR> \
-        --num_images <number of processors: 3>
+        --nproc <number of processors: 3>
 
     example:
 
@@ -128,7 +128,7 @@ system when ParaMonte is built via its provided build scripts at the root of its
                                 : If not provided, the default value will be set to onethird.
         -q | --quad             : The quadrature method. possible values: romberg/quadpackSPR/quadpackDPR
                                 : If not provided, the default value will be set to romberg.
-        -n | --num_images       : the default number of processes (coarray images) on which the application 
+        -n | --nproc            : the default number of processes (coarray images) on which the application 
                                 : will be run: positive integer. If not provided, the default is 3.
         -p | --pmlib            : The path to the root of the specific ParaMonte library build.
                                 : This root folder must contain the three lib,mod,obj folders.
@@ -159,7 +159,7 @@ while [ "$1" != "" ]; do
         -p | --pmlib )          shift
                                 ParaMonte_LIB_ROOT=$1
                                 ;;
-        -n | --num_images )     shift
+        -n | --nproc )          shift
                                 FOR_COARRAY_NUM_IMAGES=$1
                                 ;;
         -e | --errtest )        ERR_ESTIMATION_ENABLED=true
@@ -620,7 +620,7 @@ if [ $? -eq 0 ]; then
         echo ""
         echo "while [ \"\$1\" != \"\" ]; do"
         echo "    case \$1 in"
-        echo "        -n | --num_images )   shift"
+        echo "        -n | --nproc )        shift"
         echo "                              FOR_COARRAY_NUM_IMAGES=\$1"
         echo "                              ;;"
         echo "        * )                   echo >\&2 \"-- ${BUILD_NAME}RunScript - FATAL: the input flag is not recognized: \$1\""
