@@ -69,16 +69,16 @@ module BatseSgrbWorldModel_mod
 
     ! integration specifications
 
-#if defined CAL_STAGE_0
-    real(RK)    :: zoneMin = 1.99_RK
-    real(RK)    :: zoneMax = 2.01_RK
-#elif defined CAL_STAGE_1
-    real(RK)    :: zoneMin = 1.9_RK
-    real(RK)    :: zoneMax = 2.1_RK
-#else
+!#if defined CAL_STAGE_0
+!    real(RK)    :: zoneMin = 1.99_RK
+!    real(RK)    :: zoneMax = 2.01_RK
+!#elif defined CAL_STAGE_1
+!    real(RK)    :: zoneMin = 1.9_RK
+!    real(RK)    :: zoneMax = 2.1_RK
+!#else
     real(RK)    :: zoneMin = 1.09_RK    ! 1.1e0_RK
     real(RK)    :: zoneMax = 21.0_RK    ! 2.1e1_RK
-#endif
+!#endif
     real(RK)    :: zoneTol = 1.e-3_RK   ! 1.e-4_RK
     real(RK)    :: durzTol = 1.e-4_RK   ! 5.e-5_RK
     real(RK)    :: lisoTol = 5.e-5_RK   ! 1.e-5_RK
@@ -348,7 +348,8 @@ contains
         epkz_relerr = 0._RK
 #endif
 
-#if defined CAL_STAGE_0 || CAL_STAGE_1 || CAL_STAGE_2 || CAL_STAGE_3 || CAL_STAGE_4 || CAL_STAGE_5
+!#if defined CAL_STAGE_0 || CAL_STAGE_1 || CAL_STAGE_2 || CAL_STAGE_3 || CAL_STAGE_4 || CAL_STAGE_5
+#if defined doQuadRombClosedForRedshift
         call doQuadRombClosed   ( getFunc           = getModelIntOverLogDurzGivenRedshift   &
                                 , lowerLim          = zoneMin                               &
                                 , upperLim          = zoneMax                               &
@@ -441,7 +442,8 @@ contains
             end if
 #else
 
-#if defined CAL_STAGE_0 || CAL_STAGE_1 || CAL_STAGE_2 || CAL_STAGE_3 || CAL_STAGE_4 || CAL_STAGE_5
+!#if defined CAL_STAGE_0 || CAL_STAGE_1 || CAL_STAGE_2 || CAL_STAGE_3 || CAL_STAGE_4 || CAL_STAGE_5
+#if defined doQuadRombClosedForRedshift
             call doQuadRombClosed   ( getFunc           = getProbGRB    &
                                     , lowerLim          = zoneMin       &
                                     , upperLim          = zoneMax       &
