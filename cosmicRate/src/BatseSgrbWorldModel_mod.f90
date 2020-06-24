@@ -32,7 +32,7 @@ module BatseSgrbWorldModel_mod
     ! world model parameters
     ! *********************************************
 
-    integer(IK) , parameter :: ERFK = RK    ! the real kind of the input value to erf()
+    integer(IK) , parameter :: ERFK = SPR   ! the real kind of the input value to erf()
     integer(IK) , parameter :: NVAR = 4_IK  ! number of GRB attributes used in the world model
     integer(IK) , parameter :: NPAR = 16_IK ! number of world model's parameters
 
@@ -69,8 +69,16 @@ module BatseSgrbWorldModel_mod
 
     ! integration specifications
 
+#if defined CAL_STAGE_0
+    real(RK)    :: zoneMin = 1.99_RK
+    real(RK)    :: zoneMax = 2.01_RK
+#elif defined CAL_STAGE_1
+    real(RK)    :: zoneMin = 1.9_RK
+    real(RK)    :: zoneMax = 2.1_RK
+#else
     real(RK)    :: zoneMin = 1.09_RK    ! 1.1e0_RK
-    real(RK)    :: zoneMax = 7.501_RK   ! 2.1e1_RK
+    real(RK)    :: zoneMax = 21.0_RK    ! 2.1e1_RK
+#endif
     real(RK)    :: zoneTol = 1.e-3_RK   ! 1.e-4_RK
     real(RK)    :: durzTol = 1.e-4_RK   ! 5.e-5_RK
     real(RK)    :: lisoTol = 5.e-5_RK   ! 1.e-5_RK
@@ -149,8 +157,9 @@ contains
 #elif defined quadpackSPR
         use QuadPackSPR_mod, only: qag
 #else
-        use Integration_mod, only: doQuadRombOpen, ErrorMessage, midexp
-        !use Integration_mod, only: doQuadRombClosed, ErrorMessage
+        use Integration_mod, only: doQuadRombOpen, midexp
+        use Integration_mod, only: doQuadRombClosed
+        use Integration_mod, only: ErrorMessage
 #endif
         use Matrix_mod, only: getCholeskyFactor, getInvMatFromCholFac
         use Batse_mod, only: MIN_LOGPH53_4_LOGPBOLZERO, MAX_LOGPH53_4_LOGPBOLZERO, THRESH_LOGPBOL64_CORRECTION
@@ -338,16 +347,19 @@ contains
         liso_relerr = 0._RK
         epkz_relerr = 0._RK
 #endif
-        !call doQuadRombClosed   ( getFunc           = getModelIntOverLogDurzGivenRedshift   &
-        !                        , lowerLim          = zoneMin                               &
-        !                        , upperLim          = zoneMax                               &
-        !                        , maxRelativeError  = zoneTol                               &
-        !                        , nRefinement       = zoneRef                               &
-        !                        , integral          = modelint                              &
-        !                        , relativeError     = relerr                                &
-        !                        , numFuncEval       = neval                                 &
-        !                        , ierr              = ierr                                  &
-        !                        )
+
+#if defined CAL_STAGE_0 || CAL_STAGE_1 || CAL_STAGE_2 || CAL_STAGE_3 || CAL_STAGE_4 || CAL_STAGE_5
+        call doQuadRombClosed   ( getFunc           = getModelIntOverLogDurzGivenRedshift   &
+                                , lowerLim          = zoneMin                               &
+                                , upperLim          = zoneMax                               &
+                                , maxRelativeError  = zoneTol                               &
+                                , nRefinement       = zoneRef                               &
+                                , integral          = modelint                              &
+                                , relativeError     = relerr                                &
+                                , numFuncEval       = neval                                 &
+                                , ierr              = ierr                                  &
+                                )
+#else
         call doQuadRombOpen ( getFunc           = getModelIntOverLogDurzGivenRedshift   &
                             , integrate         = midexp                                &
                             , lowerLim          = zoneMin                               &
@@ -359,6 +371,7 @@ contains
                             , numFuncEval       = neval                                 &
                             , ierr              = ierr                                  &
                             )
+#endif
         !write(*,*) "Zone: ", neval, relerr / modelint
         if (mv_ierr/=0_IK .or. ierr/=0_IK) then
             if (ierr/=0_IK) mv_ierr = ierr
@@ -427,16 +440,19 @@ contains
                 error stop
             end if
 #else
-            !call doQuadRombClosed   ( getFunc           = getProbGRB    &
-            !                        , lowerLim          = zoneMin       &
-            !                        , upperLim          = zoneMax       &
-            !                        , maxRelativeError  = zoneTol       &
-            !                        , nRefinement       = zoneRef       &
-            !                        , integral          = probGRB       &
-            !                        , relativeError     = relerr        &
-            !                        , numFuncEval       = neval         &
-            !                        , ierr              = ierr          &
-            !                        )
+
+#if defined CAL_STAGE_0 || CAL_STAGE_1 || CAL_STAGE_2 || CAL_STAGE_3 || CAL_STAGE_4 || CAL_STAGE_5
+            call doQuadRombClosed   ( getFunc           = getProbGRB    &
+                                    , lowerLim          = zoneMin       &
+                                    , upperLim          = zoneMax       &
+                                    , maxRelativeError  = zoneTol       &
+                                    , nRefinement       = zoneRef       &
+                                    , integral          = probGRB       &
+                                    , relativeError     = relerr        &
+                                    , numFuncEval       = neval         &
+                                    , ierr              = ierr          &
+                                    )
+#else
             call doQuadRombOpen ( getFunc           = getProbGRB    &
                                 , integrate         = midexp        &
                                 , lowerLim          = zoneMin       &
@@ -448,6 +464,7 @@ contains
                                 , numFuncEval       = neval         &
                                 , ierr              = ierr          &
                                 )
+#endif
             !write(*,*) "Zone, ith GRB: ", mv_igrb, neval, relerr / probGRB
             if (mv_ierr/=0_IK .or. ierr/=0_IK) then
                 if (ierr/=0_IK) mv_ierr = ierr

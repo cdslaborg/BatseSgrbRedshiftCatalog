@@ -97,6 +97,7 @@ INTEGRATION_METHOD="romberg"
 RATE_DENSITY_MODEL="L08"
 FOR_COARRAY_NUM_IMAGES=3
 ERR_ESTIMATION_ENABLED=false
+unset CAL_STAGE
 
 usage()
 {
@@ -124,6 +125,8 @@ system when ParaMonte is built via its provided build scripts at the root of its
 
         -r | --ratedensity      : The GRB Rate Density model to be used
                                 : possible values: H06/L08/B10/M14/M17/F18
+        -c | --calstage         : The calibration stage in the simulation
+                                : possible values: 0/1/2/3/4/5
         -k | --kfac             : The kfactor corrections to the observed durations.
                                 : If not provided, the default value will be set to onethird.
         -q | --quad             : The quadrature method. possible values: romberg/quadpackSPR/quadpackDPR
@@ -149,6 +152,9 @@ while [ "$1" != "" ]; do
     case $1 in
         -r | --ratedensity )    shift
                                 RATE_DENSITY_MODEL=$1
+                                ;;
+        -c | --calstage )       shift
+                                CAL_STAGE=$1
                                 ;;
         -k | --kfac )           shift
                                 KFACTOR_CORRECTION=$1
@@ -224,6 +230,26 @@ echo >&2 "-- ${BUILD_NAME} - BATSE_DATA_FILE_NAME: ${BATSE_DATA_FILE_NAME}"
 #RATE_DENSITY_MODEL="B10"; 
 export RATE_DENSITY_MODEL
 echo >&2 "-- ${BUILD_NAME} - RATE_DENSITY_MODEL: ${RATE_DENSITY_MODEL}"
+
+# set the calibration stage preprocessor flag
+
+#CAL_STAGE_LIST="0 1 2 3 4 5"
+if [ -z ${CAL_STAGE+x} ]; then
+    FPP_CAL_STAGE="";
+else
+    FPP_CAL_STAGE=" -DCAL_STAGE_${CAL_STAGE}";
+    #for STAGE in $CAL_STAGE_LIST
+    #do
+    #   if [ "${CAL_STAGE}" = "${STAGE}" ]; then
+    #       KFACTOR_CORRECTION="kfacNone";
+    #   else
+    #       echo >&2 "-- ${BUILD_NAME} - FATAL: unsupported input value for KFACTOR_CORRECTION=${KFACTOR_CORRECTION}"
+    #       exit 1
+    #   fi
+    #done
+fi
+export FPP_CAL_STAGE
+echo >&2 "-- ${BUILD_NAME} - Calibration Stage, CAL_STAGE: ${CAL_STAGE}"
 
 # set Kfactor correction: kfacOneThird, kfacNone
 
@@ -462,6 +488,7 @@ if [ "${ERR_ESTIMATION_ENABLED}" = "true" ]; then FPP_FLAGS="${FPP_FLAGS} -DERR_
 
 # add Kfactor correction and SFR macros
 
+FPP_FLAGS="${FPP_FLAGS}${FPP_CAL_STAGE}"
 FPP_FLAGS="${FPP_FLAGS} -DIS_COMPATIBLE_COMPILER"
 FPP_FLAGS="${FPP_FLAGS} -D${KFACTOR_CORRECTION}"
 FPP_FLAGS="${FPP_FLAGS} -D${RATE_DENSITY_MODEL}"
