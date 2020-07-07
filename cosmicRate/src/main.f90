@@ -19,6 +19,7 @@ namelist /InputData/ ngrb, inputBatseDataFile, outputBatseDataFile
 namelist /InputData/ zoneMin, zoneMax
 namelist /InputData/ zoneTol, durzTol, lisoTol, epkzTol
 namelist /InputData/ zoneRef, durzRef, lisoRef, epkzRef
+namelist /InputData/ zoneTolGRB, zoneRefGRB
 
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ! query input data file name from the command line

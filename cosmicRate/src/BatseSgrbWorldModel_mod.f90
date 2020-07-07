@@ -79,10 +79,12 @@ module BatseSgrbWorldModel_mod
     real(RK)    :: zoneMin = 1.09_RK    ! 1.1e0_RK
     real(RK)    :: zoneMax = 21.0_RK    ! 2.1e1_RK
 !#endif
-    real(RK)    :: zoneTol = 1.e-3_RK   ! 1.e-4_RK
-    real(RK)    :: durzTol = 1.e-4_RK   ! 5.e-5_RK
-    real(RK)    :: lisoTol = 5.e-5_RK   ! 1.e-5_RK
-    real(RK)    :: epkzTol = 1.e-6_RK   ! 5.e-6_RK
+    real(RK)    :: zoneTolGRB = 1.e-5_RK
+    integer(IK) :: zoneRefGRB = 5_IK
+    real(RK)    :: zoneTol = 1.e-4_RK       ! 1.e-4_RK
+    real(RK)    :: durzTol = 8.e-4_RK       ! 5.e-5_RK
+    real(RK)    :: lisoTol = 5.e-5_RK       ! 1.e-5_RK
+    real(RK)    :: epkzTol = 5.e-6_RK       ! 5.e-6_RK
     integer(IK) :: zoneRef = 4_IK
     integer(IK) :: durzRef = 4_RK
     integer(IK) :: lisoRef = 5_RK
@@ -408,7 +410,7 @@ contains
                         , a             = zoneMin       &
                         , b             = zoneMax       &
                         , epsabs        = 0._RK         &
-                        , epsrel        = zoneTol       &
+                        , epsrel        = zoneTolGRB    &
                         , key           = 1_IK          &
                         , result        = probGRB       &
                         , abserr        = relerr        &
@@ -429,7 +431,7 @@ contains
                         , a             = zoneMin       &
                         , b             = zoneMax       &
                         , epsabs        = 0._RK         &
-                        , epsrel        = zoneTol       &
+                        , epsrel        = zoneTolGRB    &
                         , key           = 1_IK          &
                         , result        = probGRB       &
                         , abserr        = relerr        &
@@ -447,8 +449,8 @@ contains
             call doQuadRombClosed   ( getFunc           = getProbGRB    &
                                     , lowerLim          = zoneMin       &
                                     , upperLim          = zoneMax       &
-                                    , maxRelativeError  = zoneTol       &
-                                    , nRefinement       = zoneRef       &
+                                    , maxRelativeError  = zoneTolGRB    &
+                                    , nRefinement       = zoneRefGRB    &
                                     , integral          = probGRB       &
                                     , relativeError     = relerr        &
                                     , numFuncEval       = neval         &
@@ -459,8 +461,8 @@ contains
                                 , integrate         = midexp        &
                                 , lowerLim          = zoneMin       &
                                 , upperLim          = zoneMax       &
-                                , maxRelativeError  = zoneTol       &
-                                , nRefinement       = zoneRef       &
+                                , maxRelativeError  = zoneTolGRB    &
+                                , nRefinement       = zoneRefGRB    &
                                 , integral          = probGRB       &
                                 , relativeError     = relerr        &
                                 , numFuncEval       = neval         &
