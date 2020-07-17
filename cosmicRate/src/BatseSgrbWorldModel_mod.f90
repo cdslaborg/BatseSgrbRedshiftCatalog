@@ -15,7 +15,7 @@ module BatseSgrbWorldModel_mod
 #else
 #error "Unknown SFR model in BatseSgrbWorldModel_mod.f90"
 #endif
-    use Constants_mod, only: IK, RK, SPR, PI, NEGINF_RK
+    use Constants_mod, only: IK, RK, SPR, PI, NEGINF_RK, SQRT2
     use Batse_mod, only: GRB
 
     implicit none
@@ -100,9 +100,11 @@ module BatseSgrbWorldModel_mod
     type(Attribute_type) :: mv_Avg, mv_Std
 
     type :: Threshold_type
-        real(RK) :: avg, invStdSqrt2, logPbolMin, logPbolMax
+        real(RK) :: avg, logPbolMin, logPbolMax !, invStdSqrt2
     end type Threshold_type
     type(Threshold_type) :: mv_Thresh
+    real(RK), parameter :: THRESH_STD = -1.24_RK
+    real(RK), parameter :: THRESH_INV_STD_SQRT2 = 1._RK / (THRESH_STD*SQRT2)
 
     type :: ConditionalVariable_type
         real(RK):: tilt, bias, avg, std, invStdSqrt2, invStdSqrt2pi
@@ -183,15 +185,15 @@ contains
 
         ! integration variables
 
-        real(RK)                :: relerr
-        integer(IK)             :: neval
+        real(RK)                    :: relerr
+        integer(IK)                 :: neval
 
 #if defined quadpackDPR
-        integer(IK), parameter  :: limit = 1000_IK
-        integer(IK), parameter  :: lenw = 4_IK * limit
-        integer(IK)             :: last
-        integer(IK)             :: iwork(limit)
-        real(RK)                :: work(lenw)
+        integer(IK), parameter      :: limit = 1000_IK
+        integer(IK), parameter      :: lenw = 4_IK * limit
+        integer(IK)                 :: last
+        integer(IK)                 :: iwork(limit)
+        real(RK)                    :: work(lenw)
 #endif
 
         mv_ierr = 0_IK
@@ -233,13 +235,13 @@ contains
         ! BATSE detection threshold
 
         mv_Thresh%avg           = Param(15)
-        mv_Thresh%invStdSqrt2   = exp(Param(16))    ! momentarily is the threshold's standard deviation for the needs below.
+        !mv_Thresh%invStdSqrt2   = exp(Param(16))    ! momentarily is the threshold's standard deviation for the needs below.
 
         ! logPbol below which no trigger happens, and above which trigger efficiency is 100%.
 
-        mv_Thresh%logPbolMin    = mv_Thresh%avg - THRESH_SIGNIFICANCE*mv_Thresh%invStdSqrt2 - MAX_LOGPH53_4_LOGPBOLZERO   ! equivalent to eff_min_lpb
-        mv_Thresh%logPbolMax    = mv_Thresh%avg + THRESH_SIGNIFICANCE*mv_Thresh%invStdSqrt2 + THRESH_LOGPBOL64_CORRECTION ! equivalent to glb_max_lpb
-        mv_Thresh%invStdSqrt2   = 1._RK / (mv_Thresh%invStdSqrt2*SQRT2)
+        mv_Thresh%logPbolMin    = mv_Thresh%avg - THRESH_SIGNIFICANCE*THRESH_STD - MAX_LOGPH53_4_LOGPBOLZERO   ! equivalent to eff_min_lpb
+        mv_Thresh%logPbolMax    = mv_Thresh%avg + THRESH_SIGNIFICANCE*THRESH_STD + THRESH_LOGPBOL64_CORRECTION ! equivalent to glb_max_lpb
+        !mv_Thresh%invStdSqrt2   = 1._RK / (mv_Thresh%invStdSqrt2*SQRT2)
 
         ! The parameter rhoLE_given_Durz is the partial correlation of Liso & Epkz conditional on rest-frame duration:
 
@@ -736,8 +738,8 @@ contains
         real(RK), intent(in)    :: logEpkz
         real(RK)                :: probEpkzGivenRedshiftDurzLiso, efficiency
         real(ERFK)              :: normedLogPF53
-        normedLogPF53 = ( getLogPF53(logEpkz-mv_logZone,mv_logPbol) - mv_effectivePeakPhotonFluxCorrection - mv_Thresh%avg) * mv_Thresh%invStdSqrt2
-!write(*,*) getLogPF53(logEpkz-mv_logZone,mv_logPbol), mv_effectivePeakPhotonFluxCorrection, mv_Thresh%invStdSqrt2
+        normedLogPF53 = ( getLogPF53(logEpkz-mv_logZone,mv_logPbol) - mv_effectivePeakPhotonFluxCorrection - mv_Thresh%avg) * THRESH_INV_STD_SQRT2
+!write(*,*) getLogPF53(logEpkz-mv_logZone,mv_logPbol), mv_effectivePeakPhotonFluxCorrection, THRESH_INV_STD_SQRT2
         efficiency = 0.5_RK + 0.5_RK * erf(normedLogPF53)
         probEpkzGivenRedshiftDurzLiso   = efficiency * mv_LogEpkzGivenLogDurzLogLiso%invStdSqrt2pi &
                                         * exp( -( (logEpkz-mv_LogEpkzGivenLogDurzLogLiso%avg)*mv_LogEpkzGivenLogDurzLogLiso%invStdSqrt2)**2 )
@@ -783,7 +785,7 @@ contains
 #error "kfactor model requested in BatseSgrbWorldModel_mod.f90"
 #endif
 
-        normedLogPF53 = mv_Thresh%invStdSqrt2 * ( GRB%Event(mv_igrb)%logPF53 - mv_Thresh%avg )
+        normedLogPF53 = THRESH_INV_STD_SQRT2 * ( GRB%Event(mv_igrb)%logPF53 - mv_Thresh%avg )
         
 
         probGRB = (0.5_RK + 0.5_RK * erf(normedLogPF53))    &   ! BATSE efficiency
@@ -815,7 +817,7 @@ contains
         if ( logPbol < mv_Thresh%logPbolMin ) then
             batseEfficiency = 0._RK
         elseif ( logPbol < mv_Thresh%logPbolMax ) then
-            normedLogPF53 = ( getLogPF53(logEpk,logPbol) - mv_Thresh%avg ) * mv_Thresh%invStdSqrt2
+            normedLogPF53 = ( getLogPF53(logEpk,logPbol) - mv_Thresh%avg ) * THRESH_INV_STD_SQRT2
             batseEfficiency = 0.5_RK + 0.5_RK * erf( real( normedLogPF53 , kind=ERFK ) )
         elseif ( logPbol >= mv_Thresh%logPbolMax ) then
             batseEfficiency = 1._RK
