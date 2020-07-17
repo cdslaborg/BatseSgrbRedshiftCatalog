@@ -103,7 +103,7 @@ module BatseSgrbWorldModel_mod
         real(RK) :: avg, logPbolMin, logPbolMax !, invStdSqrt2
     end type Threshold_type
     type(Threshold_type) :: mv_Thresh
-    real(RK), parameter :: THRESH_STD = -1.24_RK
+    real(RK), parameter :: THRESH_STD = exp(-1.24_RK)
     real(RK), parameter :: THRESH_INV_STD_SQRT2 = 1._RK / (THRESH_STD*SQRT2)
 
     type :: ConditionalVariable_type
