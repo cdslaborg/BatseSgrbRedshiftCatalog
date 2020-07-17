@@ -5,7 +5,7 @@
     inputBatseDataFile  = "batseDataSGRB565.in"
     outputBatseDataFile = "batseDataSGRB565.out"
     
-    zoneMin  = 1.e0
+    zoneMin  = 1.1e0
     zoneMax  = 5.e0
     zoneTolGRB = 1.e-4
     zoneTol  = 1.e-4
@@ -29,7 +29,7 @@
     ! Base
 
     description = "ParaDRAM sampling of the LGRB world model of BATSE 1366 LGRBs,\nwith redshift Kfactor corrections to the T90 durations
-    \n zoneMin  = 1.e0
+    \n zoneMin  = 1.1e0
     \n zoneMax  = 5.e0
     \n zoneTolGRB = 1.e-4
     \n zoneTol  = 1.e-4

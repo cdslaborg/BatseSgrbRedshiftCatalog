@@ -32,9 +32,9 @@ module BatseSgrbWorldModel_mod
     ! world model parameters
     ! *********************************************
 
-    integer(IK) , parameter :: ERFK = RK    ! the real kind of the input value to erf()
+    integer(IK) , parameter :: ERFK = SPR   ! the real kind of the input value to erf()
     integer(IK) , parameter :: NVAR = 4_IK  ! number of GRB attributes used in the world model
-    integer(IK) , parameter :: NPAR = 16_IK ! number of world model's parameters
+    integer(IK) , parameter :: NPAR = 15_IK ! number of world model's parameters
 
     ! the normalization factor of the multivariate log-normal distribution
 
@@ -737,7 +737,7 @@ contains
         real(RK)                :: probEpkzGivenRedshiftDurzLiso, efficiency
         real(ERFK)              :: normedLogPF53
         normedLogPF53 = ( getLogPF53(logEpkz-mv_logZone,mv_logPbol) - mv_effectivePeakPhotonFluxCorrection - mv_Thresh%avg) * mv_Thresh%invStdSqrt2
-write(*,*) getLogPF53(logEpkz-mv_logZone,mv_logPbol), mv_effectivePeakPhotonFluxCorrection, mv_Thresh%invStdSqrt2
+!write(*,*) getLogPF53(logEpkz-mv_logZone,mv_logPbol), mv_effectivePeakPhotonFluxCorrection, mv_Thresh%invStdSqrt2
         efficiency = 0.5_RK + 0.5_RK * erf(normedLogPF53)
         probEpkzGivenRedshiftDurzLiso   = efficiency * mv_LogEpkzGivenLogDurzLogLiso%invStdSqrt2pi &
                                         * exp( -( (logEpkz-mv_LogEpkzGivenLogDurzLogLiso%avg)*mv_LogEpkzGivenLogDurzLogLiso%invStdSqrt2)**2 )
