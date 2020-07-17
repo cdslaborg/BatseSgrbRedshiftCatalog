@@ -32,7 +32,7 @@ module BatseSgrbWorldModel_mod
     ! world model parameters
     ! *********************************************
 
-    integer(IK) , parameter :: ERFK = SPR   ! the real kind of the input value to erf()
+    integer(IK) , parameter :: ERFK = RK    ! the real kind of the input value to erf()
     integer(IK) , parameter :: NVAR = 4_IK  ! number of GRB attributes used in the world model
     integer(IK) , parameter :: NPAR = 16_IK ! number of world model's parameters
 
@@ -362,7 +362,7 @@ contains
                                 , numFuncEval       = neval                                 &
                                 , ierr              = ierr                                  &
                                 )
-#else
+#elif defined doQuadRombOpenForRedshift
         call doQuadRombOpen ( getFunc           = getModelIntOverLogDurzGivenRedshift   &
                             , integrate         = midexp                                &
                             , lowerLim          = zoneMin                               &
@@ -374,6 +374,8 @@ contains
                             , numFuncEval       = neval                                 &
                             , ierr              = ierr                                  &
                             )
+#else
+#error "Unrecognized integration method for redshift."
 #endif
         !write(*,*) "Zone: ", neval, relerr / modelint
         if (mv_ierr/=0_IK .or. ierr/=0_IK) then
@@ -456,7 +458,7 @@ contains
                                     , numFuncEval       = neval         &
                                     , ierr              = ierr          &
                                     )
-#else
+#elif doQuadRombOpenForRedshift
             call doQuadRombOpen ( getFunc           = getProbGRB    &
                                 , integrate         = midexp        &
                                 , lowerLim          = zoneMin       &
@@ -735,6 +737,7 @@ contains
         real(RK)                :: probEpkzGivenRedshiftDurzLiso, efficiency
         real(ERFK)              :: normedLogPF53
         normedLogPF53 = ( getLogPF53(logEpkz-mv_logZone,mv_logPbol) - mv_effectivePeakPhotonFluxCorrection - mv_Thresh%avg) * mv_Thresh%invStdSqrt2
+write(*,*) getLogPF53(logEpkz-mv_logZone,mv_logPbol), mv_effectivePeakPhotonFluxCorrection, mv_Thresh%invStdSqrt2
         efficiency = 0.5_RK + 0.5_RK * erf(normedLogPF53)
         probEpkzGivenRedshiftDurzLiso   = efficiency * mv_LogEpkzGivenLogDurzLogLiso%invStdSqrt2pi &
                                         * exp( -( (logEpkz-mv_LogEpkzGivenLogDurzLogLiso%avg)*mv_LogEpkzGivenLogDurzLogLiso%invStdSqrt2)**2 )

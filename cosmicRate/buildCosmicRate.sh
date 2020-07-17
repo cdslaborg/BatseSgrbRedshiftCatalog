@@ -92,9 +92,10 @@ echo >&2
 ####################################################################################################################################
 
 ParaMonte_LIB_ROOT="/work/01902/ashahmor/stampede2/git/paramonte/build/linuxx64/intel/18.0.2.199/release/static/stack/mpi/Fortran"
+ParaMonte_LIB_ROOT="/Users/shahmoradia/Dropbox/Projects/20180101_ParaMonte/macos/build/darwinx64/gnu/9.3.0/debug/static/heap/mpi/Fortran"
 KFACTOR_CORRECTION="onethird"
 INTEGRATION_METHOD="romberg"
-RATE_DENSITY_MODEL="L08"
+RATE_DENSITY_MODEL="B10"
 FOR_COARRAY_NUM_IMAGES=3
 ERR_ESTIMATION_ENABLED=false
 QUADZ="open"
@@ -234,9 +235,14 @@ echo >&2 "-- ${BUILD_NAME} - RATE_DENSITY_MODEL: ${RATE_DENSITY_MODEL}"
 # set the calibration stage preprocessor flag
 
 if [ "${QUADZ}" = "open" ]; then
-    FPP_doQuadRombClosedForRedshift="";
+    FPP_doQuadRombClosedForRedshift="-DdoQuadRombOpenForRedshift";
 else
-    FPP_doQuadRombClosedForRedshift=" -DdoQuadRombClosedForRedshift";
+    if [ "${QUADZ}" = "closed" ]; then
+        FPP_doQuadRombClosedForRedshift=" -DdoQuadRombClosedForRedshift";
+    else
+        echo >&2 "-- ${BUILD_NAME} - FATAL: unsupported input value for redshift integration=${QUADZ}"
+        exit 1
+    fi
 fi
 export FPP_doQuadRombClosedForRedshift
 echo >&2 "-- ${BUILD_NAME} - The z-axis Romberg method, QUADZ: ${QUADZ}"
@@ -467,8 +473,14 @@ fi
 # preprocessor flags
 ####################################################################################################################################
 
-if [ "${COMPILER_SUITE}" = "gnu" ]; then FPP_FLAGS="-cpp"; fi
-if [ "${COMPILER_SUITE}" = "intel" ]; then FPP_FLAGS="-fpp"; fi
+if [ "${COMPILER_SUITE}" = "gnu" ]; then
+    FPP_FLAGS="-ffree-line-length-none -cpp";
+    MOD_FLAGS="-J${ParaMonte_LIB_ROOT}/mod"
+fi
+if [ "${COMPILER_SUITE}" = "intel" ]; then
+    FPP_FLAGS="-fpp"
+    MOD_FLAGS="-module ${ParaMonte_LIB_ROOT}/mod"
+fi
 
 if [ "${CFI_ENABLED}" = "true" ]; then FPP_FLAGS="${FPP_FLAGS} -DCFI_ENABLED"; fi
 if [ "${CAF_ENABLED}" = "true" ]; then FPP_FLAGS="${FPP_FLAGS} -DCAF_ENABLED"; fi
@@ -478,7 +490,7 @@ if [ "${ERR_ESTIMATION_ENABLED}" = "true" ]; then FPP_FLAGS="${FPP_FLAGS} -DERR_
 
 # add Kfactor correction and SFR macros
 
-FPP_FLAGS="${FPP_FLAGS}${FPP_doQuadRombClosedForRedshift}"
+FPP_FLAGS="${FPP_FLAGS} ${FPP_doQuadRombClosedForRedshift}"
 FPP_FLAGS="${FPP_FLAGS} -DIS_COMPATIBLE_COMPILER"
 FPP_FLAGS="${FPP_FLAGS} -D${KFACTOR_CORRECTION}"
 FPP_FLAGS="${FPP_FLAGS} -D${RATE_DENSITY_MODEL}"
@@ -547,9 +559,10 @@ echo >&2 "-- ${BUILD_NAME} - compiling ${BUILD_NAME} with ${COMPILER_NAME}"
 cd "${CosmicRate_OBJ_DIR}"
 for SRC_FILE in ${SRC_FILE_LIST}
 do
-    echo >&2 "-- ${BUILD_NAME} - ${COMPILER_NAME} ${COMPILER_FLAGS} ${FPP_FLAGS} ${CosmicRate_SRC_DIR}/${SRC_FILE} -c"
+    echo >&2 "-- ${BUILD_NAME} - ${COMPILER_NAME} ${COMPILER_FLAGS} ${FPP_FLAGS} ${MOD_FLAGS} -I${CosmicRate_MOD_DIR} -I${ParaMonte_MOD_DIR} -c ${CosmicRate_SRC_DIR}/${SRC_FILE}"
+
     ${COMPILER_NAME} ${COMPILER_FLAGS} ${FPP_FLAGS} \
-    -module "${CosmicRate_MOD_DIR}" \
+    ${MOD_FLAGS} \
     -I"${CosmicRate_MOD_DIR}" \
     -I"${ParaMonte_MOD_DIR}" \
     -c "${CosmicRate_SRC_DIR}/${SRC_FILE}"
@@ -582,7 +595,7 @@ echo >&2 "-- ${BUILD_NAME} - ${LINKER} ${COMPILER_FLAGS} ${LINKER_FLAGS} .o ${Pa
 
 cd "${CosmicRate_BIN_DIR}"
 ${LINKER} ${COMPILER_FLAGS} ${LINKER_FLAGS} \
--module "${CosmicRate_MOD_DIR}" \
+${MOD_FLAGS} \
 -I"${CosmicRate_MOD_DIR}" \
 -I"${ParaMonte_MOD_DIR}" \
 "${CosmicRate_OBJ_DIR}"/*.o \
@@ -692,7 +705,8 @@ if [ $? -eq 0 ]; then
     echo "" >> ${RUN_FILE_NAME}
     echo "chmod +x ${EXE_NAME}" >> ${RUN_FILE_NAME}
     if [ "${MPI_ENABLED}" = "true" ]; then
-        echo "ibrun -np \${FOR_COARRAY_NUM_IMAGES} ${EXE_NAME_WITH_OPTIONS}" >> ${RUN_FILE_NAME}
+        echo "ibrun -np \${FOR_COARRAY_NUM_IMAGES} ${EXE_NAME_WITH_OPTIONS} || \\" >> ${RUN_FILE_NAME}
+        echo "mpiexec -np \${FOR_COARRAY_NUM_IMAGES} ${EXE_NAME_WITH_OPTIONS}" >> ${RUN_FILE_NAME}
         echo "" >> ${RUN_FILE_NAME}
     else
         if [ "${CAF_ENABLED}" = "true" ]; then

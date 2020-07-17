@@ -5,14 +5,14 @@
     inputBatseDataFile  = "batseDataSGRB565.in"
     outputBatseDataFile = "batseDataSGRB565.out"
     
-    zoneMin  = 1.1e0
-    zoneMax  = 5.0e0
-    !zoneTolGRB = 1.e-4
-    zoneTol  = 1.e-3
-    durzTol  = 1.e-4
-    lisoTol  = 1.e-5
+    zoneMin  = 1.99e0
+    zoneMax  = 2.01e0
+    zoneTolGRB = 1.e-4
+    zoneTol  = 1.e-4
+    durzTol  = 5.e-5
+    lisoTol  = 8.e-6
     epkzTol  = 1.e-6
-    !zoneRefGRB = 5
+    zoneRefGRB = 4
     zoneRef = 4 
     durzRef = 6
     lisoRef = 6     
@@ -62,22 +62,7 @@
     restartFileFormat                   = "binary"
     silentModeRequested                 = false
     mpiFinalizeRequested                = true
-    variableNameList                    = avgLogLiso
-                                        , avgLogEpkz
-                                        , avgLogEiso
-                                        , avgLogT90z
-                                        , logStdLogLiso
-                                        , logStdLogEpkz
-                                        , logStdLogEiso
-                                        , logStdLogT90z
-                                        , atanhCorLisoEpkz
-                                        , atanhCorLisoEiso
-                                        , atanhCorLisoT90z
-                                        , atanhCorEpkzEiso
-                                        , atanhCorEpkzT90z
-                                        , atanhCorEisoT90z
-                                        , avgLogThresh
-                                        , logStdLogThresh
+    variableNameList                    = "avgLogLiso", "avgLogEpkz", "avgLogEiso", "avgLogT90z", "logStdLogLiso", "logStdLogEpkz", "logStdLogEiso", "logStdLogT90z", "atanhCorLisoEpkz", "atanhCorLisoEiso", "atanhCorLisoT90z", "atanhCorEpkzEiso", "atanhCorEpkzT90z", "atanhCorEisoT90z", "avgLogThresh", "logStdLogThresh"
 
     ! MCMC
 
@@ -89,7 +74,6 @@
     randomStartPointRequested           = false
 
     startPointVec = 
-
      0.11999085829528188E+03
      0.69459832062377647E+01
      0.11770668777893782E+03
@@ -110,7 +94,7 @@
 
     ! DRAM
 
-    scaleFactor                         = "0.35*gelman",
+    scaleFactor                         = "0.2*gelman",
     proposalModel                       = "normal"
     adaptiveUpdateCount                 = 2000000000
    !adaptiveUpdatePeriod                = 35
@@ -158,3 +142,4 @@
     -0.11617035954081290E+00  -0.60305960370016211E-01  -0.10747839526241609E+00  -0.95203927058557139E-01  -0.94178497558294384E-03   0.38716085178216335E-01   0.92301520840980394E-02   0.18944886567468251E-01  -0.24592350591255072E-02  -0.53231763728235027E-02  -0.23982240297766126E-02  -0.54305995210012521E-02  -0.57416831851815689E-02   0.13064222935148743E-01   0.32671318809216071E+00   0.10000000000000000E+01
 
 /
+

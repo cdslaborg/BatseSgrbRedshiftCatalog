@@ -5,7 +5,7 @@ use Batse_mod, only: readDataGRB
 use System_mod, only: CmdArg_type
 use Constants_mod, only: IK, RK
 use BatseSgrbWorldModel_mod, only: NPAR, getLogPostProb
-use BatseSgrbWorldModel_mod, only: zoneMin, zoneMax
+use BatseSgrbWorldModel_mod, only: zoneMin, zoneMax, zoneTolGRB, zoneRefGRB
 use BatseSgrbWorldModel_mod, only: zoneTol, durzTol, lisoTol, epkzTol
 use BatseSgrbWorldModel_mod, only: zoneRef, durzRef, lisoRef, epkzRef
 
